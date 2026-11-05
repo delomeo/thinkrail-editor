@@ -1,9 +1,18 @@
 import type { NativeCommand, NativeQuitHint, NativeShortcutsBridge } from "@thinkrail/contracts";
 import { useEffect, useState } from "react";
-import { platformShortcutLabel } from "../lib";
-import { useAppStore } from "../store";
+import { platformShortcutLabel, requestIdeCommand } from "../lib";
+import { startTreeCreate } from "../panels/filesTreeState";
+import { selectActiveWorkspace, useAppStore } from "../store";
 import { requestClose } from "./closeRequestChannel";
-import { createWebShortcuts, hasWebShortcuts, shortcutPlatform } from "./shortcutCommands";
+import {
+	createIdeShortcuts,
+	createWebShortcuts,
+	hasIdeShortcuts,
+	hasWebShortcuts,
+	type IdeCommandId,
+	isNativeIdeCommand,
+	shortcutPlatform,
+} from "./shortcutCommands";
 import {
 	hasDismissibleLayer,
 	hasLayer,
@@ -48,6 +57,33 @@ function dismissTopLayer() {
 		}),
 	);
 	return true;
+}
+
+/** The id → handler map the file / project chords run; a surface that can perform one subscribes in `ideCommands.ts`. */
+export function ideCommandHandlers(): Record<IdeCommandId, () => boolean> {
+	return {
+		"file.new": () => requestIdeCommand("file.new"),
+		"folder.new": () => requestIdeCommand("folder.new"),
+		"file.save": () => requestIdeCommand("file.save"),
+		"project.open": () => requestIdeCommand("project.open"),
+	};
+}
+
+/**
+ * The File menu's own items, from the topbar or the host's native menu. A menu click is an explicit request,
+ * unlike a chord: where no mounted surface claims it, **New file** / **New folder** open the Files tool and
+ * start the same inline name row its header pair starts, so the item never silently does nothing. **Save**
+ * has no fallback — with no file pane there is nothing to save — and an unclaimed chord never comes here at
+ * all, so an unclaimed `Mod+N` still belongs to `NewWorkspaceDialog`.
+ */
+export function runFileMenuCommand(command: "file.new" | "folder.new" | "file.save"): void {
+	if (requestIdeCommand(command)) return;
+	if (command === "file.save") return;
+	const state = useAppStore.getState();
+	const workspaceId = selectActiveWorkspace(state)?.id;
+	if (!workspaceId) return;
+	startTreeCreate(workspaceId, command === "file.new" ? "file" : "dir");
+	state.requestToolView(workspaceId, "files");
 }
 
 function openSettingsUnlessModal() {
@@ -99,6 +135,7 @@ export function useAppShortcuts() {
 		const intervals = intervalScope();
 		const platform = shortcutPlatform(true);
 		const listensForKeys = hasWebShortcuts(platform);
+		const listensForIdeKeys = hasIdeShortcuts(platform);
 		const shortcuts = createWebShortcuts({
 			platform,
 			closeItem: () => {
@@ -116,16 +153,39 @@ export function useAppShortcuts() {
 			now: () => performance.now(),
 			every: intervals.every,
 		});
-		const unsubscribe = subscribeToNativeShortcuts(bridge, setQuitHint, shortcuts.run);
+		function runNativeCommand(command: NativeCommand) {
+			if (command === "file.new" || command === "folder.new" || command === "file.save") {
+				// The native File menu's items are menu clicks, the same as the topbar's.
+				runFileMenuCommand(command);
+				return;
+			}
+			if (isNativeIdeCommand(command)) requestIdeCommand(command);
+			else shortcuts.run(command);
+		}
+		const unsubscribe = subscribeToNativeShortcuts(bridge, setQuitHint, runNativeCommand);
 		const doc = globalThis.document;
+		const ide = createIdeShortcuts({
+			platform,
+			handlers: ideCommandHandlers(),
+			modalOpen: () => hasLayer(doc, MODAL_LAYER_SELECTOR),
+			isInTerminal,
+		});
+		function cancelHeld() {
+			shortcuts.cancel();
+			ide.cancel();
+		}
 		function onVisibilityChange() {
-			if (doc.visibilityState === "hidden") shortcuts.cancel();
+			if (doc.visibilityState === "hidden") cancelHeld();
 		}
 		if (listensForKeys) {
 			window.addEventListener("keydown", shortcuts.keydown, true);
 			window.addEventListener("keyup", shortcuts.keyup, true);
 		}
-		window.addEventListener("blur", shortcuts.cancel);
+		if (listensForIdeKeys) {
+			window.addEventListener("keydown", ide.keydown, true);
+			window.addEventListener("keyup", ide.keyup, true);
+		}
+		window.addEventListener("blur", cancelHeld);
 		doc.addEventListener("visibilitychange", onVisibilityChange);
 		return () => {
 			unsubscribe();
@@ -133,7 +193,11 @@ export function useAppShortcuts() {
 				window.removeEventListener("keydown", shortcuts.keydown, true);
 				window.removeEventListener("keyup", shortcuts.keyup, true);
 			}
-			window.removeEventListener("blur", shortcuts.cancel);
+			if (listensForIdeKeys) {
+				window.removeEventListener("keydown", ide.keydown, true);
+				window.removeEventListener("keyup", ide.keyup, true);
+			}
+			window.removeEventListener("blur", cancelHeld);
 			doc.removeEventListener("visibilitychange", onVisibilityChange);
 			intervals.dispose();
 		};

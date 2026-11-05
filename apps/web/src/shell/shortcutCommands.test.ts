@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { type NativeQuitHint, QUIT_CONFIRMATION } from "@thinkrail/contracts";
 import {
+	createIdeShortcuts,
 	createWebShortcuts,
 	hasWebShortcuts,
+	IDE_SHORTCUT_COMMANDS,
+	type IdeCommandId,
+	isNativeIdeCommand,
+	matchIdeCommand,
 	matchShortcut,
 	SHORTCUT_COMMANDS,
 	type ShortcutPlatform,
@@ -234,5 +239,183 @@ describe("linux quit confirmation", () => {
 		h.keyup("KeyA", "q");
 		expect(h.hints).toEqual(["armed", "release", "quitting"]);
 		expect(h.log).toEqual(["quit"]);
+	});
+});
+
+const IDE_IDS = IDE_SHORTCUT_COMMANDS.map((command) => command.id);
+
+function modChord(
+	platform: ShortcutPlatform,
+	code: string,
+	overrides: Partial<KeyboardEvent> = {},
+) {
+	const apple = platform === "apple";
+	return chord(code, { ctrlKey: !apple, metaKey: apple, ...overrides });
+}
+
+function ideRunner(
+	platform: ShortcutPlatform,
+	handles: readonly IdeCommandId[],
+	options: { modal?: boolean; terminal?: boolean } = {},
+) {
+	const log: string[] = [];
+	const handlers = Object.fromEntries(
+		IDE_SHORTCUT_COMMANDS.map(({ id }) => [
+			id,
+			() => {
+				if (!handles.includes(id)) return false;
+				log.push(id);
+				return true;
+			},
+		]),
+	) as Record<IdeCommandId, () => boolean>;
+	const runner = createIdeShortcuts({
+		platform,
+		handlers,
+		modalOpen: () => options.modal ?? false,
+		isInTerminal: () => options.terminal ?? false,
+	});
+	function keydown(code: string, overrides: Partial<KeyboardEvent> = {}) {
+		const event = {
+			...modChord(platform, code, overrides),
+			repeat: overrides.repeat ?? false,
+			target: null as EventTarget | null,
+			prevented: false,
+			stoppedImmediate: false,
+			preventDefault() {
+				event.prevented = true;
+			},
+			stopPropagation() {},
+			stopImmediatePropagation() {
+				event.stoppedImmediate = true;
+			},
+		};
+		runner.keydown(event);
+		return { prevented: event.prevented, stoppedImmediate: event.stoppedImmediate };
+	}
+	return {
+		log,
+		keydown,
+		keyup: (code: string, shiftKey = false) => runner.keyup({ code, shiftKey }),
+		cancel: runner.cancel,
+	};
+}
+
+describe("IDE command chords", () => {
+	test("the table registers the four commands with their default Mod chords", () => {
+		expect(IDE_IDS).toEqual(["file.new", "folder.new", "file.save", "project.open"]);
+		const table = {
+			apple: { KeyN: "file.new", KeyS: "file.save", KeyO: "project.open" },
+			windows: { KeyN: "file.new", KeyS: "file.save", KeyO: "project.open" },
+			linux: { KeyN: "file.new", KeyS: "file.save", KeyO: "project.open" },
+			browser: { KeyN: null, KeyS: null, KeyO: null },
+		} as const;
+		for (const [platform, codes] of Object.entries(table)) {
+			for (const [code, command] of Object.entries(codes)) {
+				expect(
+					matchIdeCommand(
+						modChord(platform as ShortcutPlatform, code),
+						platform as ShortcutPlatform,
+						() => false,
+					),
+				).toBe(command);
+			}
+		}
+	});
+
+	test("a command matches only its own modifier set, never inside a terminal", () => {
+		const match = (code: string, overrides: Partial<KeyboardEvent> = {}) =>
+			matchIdeCommand(modChord("linux", code, overrides), "linux", () => false);
+		expect(match("KeyN", { key: "n" })).toBe("file.new");
+		expect(match("KeyN", { key: "N", shiftKey: true })).toBe("folder.new");
+		expect(match("KeyN", { key: "ц", shiftKey: true })).toBe("folder.new");
+		expect(match("KeyN", { shiftKey: true })).toBe("folder.new");
+		expect(match("KeyO", { shiftKey: true })).toBeNull();
+		expect(match("KeyS", { altKey: true })).toBeNull();
+		expect(match("KeyS", { ctrlKey: false, metaKey: true })).toBeNull();
+		expect(match("KeyS", { ctrlKey: false })).toBeNull();
+		expect(match("KeyA")).toBeNull();
+		const inTerminal = (code: string) =>
+			matchIdeCommand(modChord("linux", code), "linux", () => true);
+		expect(inTerminal("KeyN")).toBeNull();
+		expect(inTerminal("KeyS")).toBeNull();
+		expect(inTerminal("KeyO")).toBeNull();
+		expect(matchIdeCommand(modChord("apple", "KeyO"), "apple", () => false)).toBe("project.open");
+		expect(
+			matchIdeCommand(
+				modChord("apple", "KeyO", { ctrlKey: true, metaKey: false }),
+				"apple",
+				() => false,
+			),
+		).toBeNull();
+	});
+
+	test("no IDE chord shadows a destructive table chord, and the reverse", () => {
+		for (const platform of ["apple", "windows", "linux", "browser"] as const) {
+			for (const code of ["KeyW", "F4", "KeyQ", "Comma"]) {
+				expect(matchIdeCommand(modChord(platform, code), platform, () => false)).toBeNull();
+			}
+			for (const code of ["KeyN", "KeyS", "KeyO"]) {
+				expect(matchShortcut(modChord(platform, code), platform, () => false)).toBeNull();
+			}
+		}
+	});
+
+	test("the host's File menu commands name IDE actions, the destructive chords do not", () => {
+		for (const id of IDE_SHORTCUT_COMMANDS.map((command) => command.id)) {
+			expect(isNativeIdeCommand(id)).toBe(true);
+		}
+		expect(isNativeIdeCommand("close-item")).toBe(false);
+		expect(isNativeIdeCommand("open-settings")).toBe(false);
+	});
+
+	test("a claimed chord runs its handler once per physical press, then swallows the repeats", () => {
+		const h = ideRunner("windows", ["file.save"]);
+		expect(h.keydown("KeyS")).toEqual({ prevented: true, stoppedImmediate: true });
+		expect(h.log).toEqual(["file.save"]);
+		expect(h.keydown("KeyS", { repeat: true })).toEqual({
+			prevented: true,
+			stoppedImmediate: true,
+		});
+		expect(h.log).toEqual(["file.save"]);
+		h.keyup("KeyS");
+		expect(h.keydown("KeyS")).toEqual({ prevented: true, stoppedImmediate: true });
+		expect(h.log).toEqual(["file.save", "file.save"]);
+		h.keydown("KeyS", { repeat: true });
+		h.cancel();
+		expect(h.keydown("KeyS")).toEqual({ prevented: true, stoppedImmediate: true });
+		expect(h.log).toEqual(["file.save", "file.save", "file.save"]);
+	});
+
+	test("Shift selects folder.new and leaves file.new on the unshifted press", () => {
+		const h = ideRunner("apple", ["file.new", "folder.new"]);
+		expect(h.keydown("KeyN")).toEqual({ prevented: true, stoppedImmediate: true });
+		expect(h.log).toEqual(["file.new"]);
+		h.keyup("KeyN");
+		expect(h.keydown("KeyN", { shiftKey: true })).toEqual({
+			prevented: true,
+			stoppedImmediate: true,
+		});
+		expect(h.log).toEqual(["file.new", "folder.new"]);
+	});
+
+	test("an unclaimed chord is neither swallowed nor stopped, so its other owner still runs", () => {
+		const h = ideRunner("linux", []);
+		expect(h.keydown("KeyN")).toEqual({ prevented: false, stoppedImmediate: false });
+		expect(h.keydown("KeyO")).toEqual({ prevented: false, stoppedImmediate: false });
+		expect(h.log).toEqual([]);
+		const available = { projects: true, workspace: true, bottom: true, newWorkspace: true };
+		expect(globalHotkeyCommand(chord("KeyN"), available, false, "Linux x86_64")).toBe(
+			"new-workspace",
+		);
+	});
+
+	test("a modal layer or xterm keeps the keyboard", () => {
+		const modal = ideRunner("windows", ["project.open"], { modal: true });
+		expect(modal.keydown("KeyO")).toEqual({ prevented: false, stoppedImmediate: false });
+		expect(modal.log).toEqual([]);
+		const terminal = ideRunner("windows", ["file.save"], { terminal: true });
+		expect(terminal.keydown("KeyS")).toEqual({ prevented: false, stoppedImmediate: false });
+		expect(terminal.log).toEqual([]);
 	});
 });

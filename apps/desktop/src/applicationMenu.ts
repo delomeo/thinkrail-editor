@@ -17,14 +17,31 @@ export const DEFAULT_MENU_LABELS: DesktopMenuLabels = readMenuLabels({});
 export const QUIT_SHORTCUT_ACTION = "quit-shortcut";
 const CLOSE_ITEM_COMMAND: NativeCommand = "close-item";
 const OPEN_SETTINGS_COMMAND: NativeCommand = "open-settings";
-const NATIVE_COMMANDS = { "close-item": true, "open-settings": true } satisfies Record<
-	NativeCommand,
-	true
->;
+const NATIVE_COMMANDS = {
+	"close-item": true,
+	"file.new": true,
+	"file.save": true,
+	"folder.new": true,
+	"open-settings": true,
+	"project.open": true,
+} satisfies Record<NativeCommand, true>;
 
 type ApplicationMenuApi = {
 	setApplicationMenu(menu: ApplicationMenuItemConfig[]): void;
 };
+
+function fileMenu(labels: DesktopMenuLabels): ApplicationMenuItemConfig {
+	return {
+		label: labels["desktop.menu.file"],
+		submenu: [
+			{ label: labels["desktop.menu.newFile"], action: "file.new" },
+			{ label: labels["desktop.menu.newFolder"], action: "folder.new" },
+			{ label: labels["desktop.menu.save"], action: "file.save" },
+			{ type: "separator" },
+			{ label: labels["desktop.menu.openProject"], action: "project.open" },
+		],
+	};
+}
 
 function editMenu(labels: DesktopMenuLabels): ApplicationMenuItemConfig {
 	return {
@@ -71,6 +88,7 @@ export function desktopApplicationMenu(
 				},
 			],
 		},
+		fileMenu(labels),
 		editMenu(labels),
 		{
 			label: labels["desktop.menu.window"],

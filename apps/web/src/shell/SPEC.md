@@ -29,7 +29,7 @@ Every child is a directory module with `index.ts` as its public surface:
 - `chatReconciliation/` ([[submodule-web-shell-chat-reconciliation]]) owns host session/local placement/cache/history convergence and chat deep-link orchestration.
 - `terminalReconciliation/` ([[submodule-web-shell-terminal-reconciliation]]) owns host terminal-catalog/local placement convergence without owning PTY lifetime.
 - `legacySelection/` ([[submodule-web-shell-legacy-selection]]) is the sole temporary adapter from workbench attention to migration-era active editor/terminal/preview mirrors.
-- `locationBar/` ([[submodule-web-shell-location-bar]]) owns the topbar's captioned location segments and their project / workspace / branch controls; it reaches `panels` per-file and `store`/`transport`, never the layout engine.
+- `locationBar/` ([[submodule-web-shell-location-bar]]) owns the topbar's captioned location segments, their File / project / workspace / branch controls, and the File action menu (file items plus the shared open / create / clone project flows); it reaches `panels` per-file and `store`/`transport`, never the layout engine.
 
 The sibling dependency graph is: `layoutState → layout`; `chatReconciliation → layout + layoutState`; `terminalReconciliation → layout`; `layoutIntents → layout + chatReconciliation + terminalReconciliation`; `legacySelection` reaches store selectors/actions only; and `WorkspaceWorkbench` composes each active orchestration barrel with `layout`, panels, and render callbacks. Chat resource availability is isolated behind a per-session selector component; the parent workbench never subscribes to the whole `sessions` record, so a streaming runtime cannot invalidate every tab renderer and side tool behind it. Siblings import only through barrels. Tests live with the orchestration module that owns the behavior rather than making store tests import shell runtime effects.
 
@@ -71,12 +71,25 @@ without a capability, neither renders. Panels receive optional React content, ne
 checks. The topbar identity is the icon-only ThinkRail mark—the same
 vector served as `public/favicon.svg`, inlined at 32×32 and rendered
 through semantic `text-primary`—with no divider before location. With a context project the mark is followed
-by the `locationBar` strip: captioned segments **Project · Workspace · Branch · from base · Remote · Pull
-request** whose values are controls (project switcher, workspace actions + sibling switcher, branch card,
-Remote and Pull request segments with the branch's next action), with the drop order and grammar owned by
+by the `locationBar` strip: captioned segments **File · Project · Workspace · Branch · from base · Remote ·
+Pull request** whose values are controls (the File actions menu, project switcher, workspace actions + sibling
+switcher, branch card, Remote and Pull request segments with the branch's next action), with the drop order
+and grammar owned by
 [[submodule-web-shell-location-bar]]. Shell passes it the context project, the active workspace (or `null`
-for Project Home), the branch status from `useBranchStatus`, and the callback that opens the shell-owned
-New workspace dialog. No selected project
+for Project Home), the branch status from `useBranchStatus`, the callback that opens the shell-owned
+New workspace dialog, and the file-action callbacks, all of which run one shell helper
+(`useAppShortcuts.runFileMenuCommand`) rather than a menu-local path: **New file** and **New folder** first
+*try* the `file.new` / `folder.new` commands, so a mounted Files surface runs its own create row; where
+nothing claims the command they run `filesTreeState.startTreeCreate` for the active workspace and then the
+store's existing `requestToolView` reveal intent for the `files` tool, opening and focusing that pane through
+[[submodule-web-shell-layout-intents]] rather than adding a second reveal path — a menu item that only opened
+the pane was the same feature half-run twice, because the name row is the request. **Save file** runs
+`file.save` with no fallback (with no file pane there is nothing to save). A menu item with no callback stays
+disabled. Shell mounts no menu of its own in the leading group — the File
+menu belongs to the locationBar module and opts out of dragging through that strip's own `window-no-drag`
+controls, so the leading group gains no blanket drag exclusion and `topbarChrome.test.ts` gates that Shell
+still places no button outside `topbar-actions` and adds no `window-no-drag` to the identity group.
+No selected project
 leaves the logo alone.
 
 Immediately before host connection status, the topbar conditionally renders the **JetBrains recurring-quota
@@ -203,7 +216,7 @@ transition. ChatView's `/name` command is the independent keyboard entry point t
 - `Mod+B` toggles the left side, restoring local group/tab attention or an eligible singleton tool;
 - `Mod+J` does the same for the right side;
 - `Mod+Shift+J` toggles bottom, restoring local bottom attention, a bottom-targeted singleton, or the terminal creation surface;
-- `Mod+N`, and its alias `Mod+Alt+N`, open `NewWorkspaceDialog` for the context project (the active workspace's project, else the selected project). The shell owns this one keyboard-opened instance as local state — it is not store state and not the `ProjectTree`/`WelcomePanel` instances, which keep their own return-focus and prompt-seeding semantics. `Mod+N` is the canonical chord and the one shortcut chrome advertises first; the alias exists because browsers reserve Cmd/Ctrl+N for a new window and never deliver it to the page, while the desktop webview does. This is the only chord that accepts Alt.
+- `Mod+N`, and its alias `Mod+Alt+N`, open `NewWorkspaceDialog` for the context project (the active workspace's project, else the selected project). The shell owns this one keyboard-opened instance as local state — it is not store state and not the `ProjectTree`/`WelcomePanel` instances, which keep their own return-focus and prompt-seeding semantics. `Mod+N` is the canonical chord and the one shortcut chrome advertises first; the alias exists because browsers reserve Cmd/Ctrl+N for a new window and never deliver it to the page, while the desktop webview does. This is the only chord that accepts Alt. The IDE table below claims `Mod+N` before this bullet whenever a Files surface is mounted, so this is the unclaimed case.
 - `Mod+K` opens `SessionSwitcher`, a modal palette listing live sessions — only those needing attention or running, grouped by project in `ProjectTree` order and sorted needs-input > error > unread > running within each. It is driven by the global normalized attention snapshot (`sessionStateByWorkspace`), so it surfaces sessions in workspaces this client has not loaded; it backfills their workspace names and chat titles with `workspace.list`/`session.list` on open and jumps to a pick via `activateWorkspaceFromRoute`. Its open state lives in [[submodule-web-store]] (`sessionSwitcherOpen` + `openSessionSwitcher`/`closeSessionSwitcher`/`toggleSessionSwitcher`) so an aggregate attention notification from [[submodule-web-notifications]] can surface the palette on click; shell binds the chord through `toggleSessionSwitcher`. Because the palette is itself a modal, the global chord is suppressed while it is open, so it owns its own `Mod+K` close toggle (alongside `Esc`/backdrop). It accepts neither Shift nor Alt.
 - Row and header glyphs reuse the `ProjectTree` vocabulary: a leading `RiChat2Line` (wrapped in `RunningIcon` while running) and a trailing `AttentionDot` for a session that needs attention — no bespoke per-outcome glyphs.
 
@@ -224,4 +237,42 @@ Web chords are Ctrl only (no Meta/Alt; no Shift except where it produces a punct
 
 Quit confirmation runs the shared contracts `createQuitConfirmation` rule in both places: the host on macOS, the web on Linux. The web adapter tracks held from the Ctrl+Q keydown until keyup of that same physical `code` or Control, calls `sync()` on keyup, and treats window blur or a hidden document as `cancel()`: an already-confirmed gesture (hint `release`) quits, otherwise it hides. A confirmed quit calls `bridge.quit()` once; if it rejects, the adapter resets the rule so the pill hides and Ctrl+Q works again. Either way the web renders the hint as `QuitHintOverlay`, one centered, `pointer-events-none` `role="status"` pill that fades out on `hidden` and keeps the last text while fading; the text names the platform chord (`⌘Q` / `Ctrl+Q`).
 
-`close-item` is never a window close: if a dismissible layer is open (modal or open Radix dialog/alertdialog/menu anywhere; a chat history overlay only inside the DOM-focused group, or anywhere when no group has focus; selectors and the xterm test shared with `useGlobalHotkeys` in `shortcutLayers.ts`), the hook dispatches `Escape` to the focused element so each layer keeps its own Escape semantics. The Escape is synthetic (untrusted), so each dismissible layer must catch Escape at document/window level or on an ancestor of focus and must not filter on `isTrusted`; Radix `DismissableLayer` (document capture) and `HistoryOverlay` (window capture) do, and e2e `close-quit-shortcuts` guards it. Otherwise it fires `requestClose` on the shell-owned `closeRequestChannel.ts` (injected into the workbench as `subscribeCloseRequest`, so no render cascade), and the workbench closes the selected tab of the focused group, else of the last-focused center group, through the same `onRequestClose` path as the tab X (terminal confirmation included). Singleton tools, folded groups, and whole regions are never closed; nothing closable is a no-op. With no active workspace only the layer step applies. Each chord has one owner: a chord in the command table is never also bound in `useGlobalHotkeys`, and a chord the host forwards natively is never in the table for that platform.
+`close-item` is never a window close: if a dismissible layer is open (modal or open Radix dialog/alertdialog/menu anywhere; a chat history overlay only inside the DOM-focused group, or anywhere when no group has focus; selectors and the xterm test shared with `useGlobalHotkeys` in `shortcutLayers.ts`), the hook dispatches `Escape` to the focused element so each layer keeps its own Escape semantics. The Escape is synthetic (untrusted), so each dismissible layer must catch Escape at document/window level or on an ancestor of focus and must not filter on `isTrusted`; Radix `DismissableLayer` (document capture) and `HistoryOverlay` (window capture) do, and e2e `close-quit-shortcuts` guards it. Otherwise it fires `requestClose` on the shell-owned `closeRequestChannel.ts` (injected into the workbench as `subscribeCloseRequest`, so no render cascade), and the workbench closes the selected tab of the focused group, else of the last-focused center group, through the same `onRequestClose` path as the tab X (terminal confirmation included). Singleton tools, folded groups, and whole regions are never closed; nothing closable is a no-op. With no active workspace only the layer step applies. Each chord in the destructive table has one owner: it is never also bound in `useGlobalHotkeys`, and a chord the host forwards natively is never in the table for that platform. The IDE table below may share a code with a shell chord and defers to that owner whenever nothing claims it.
+
+**A close that would drop unsaved text is asked first.** Every user-initiated tab close takes one path — the
+tab X, the context-menu Close, `Delete` on a focused tab, or the `close-item` chord — through
+`onRequestClose`, and the workbench keeps that close as a continuation: for a terminal whose shell is still
+running (`useTerminalClose`) and for a file tab whose buffer differs from disk (`openTabs.findDirtyFileTab`
+plus `panels/fileTabClose.tsx`) the layout commit and the tab removal wait for the dialog's answer, which is
+the only thing that decides whether the buffer is written first, dropped, or left alone (its rules and what is
+*not* intercepted: [[submodule-web-panels]]). Both confirmations are mounted once per workbench, never per
+pane, and neither re-derives its own dirty flag: the file one asks the same `isFileTabDirty` rule the dirty
+dot uses, and `saveFileTab` writes only the buffer the tab still holds at the moment the answer arrives, so a
+tab that became clean in another way is closed without a second write. A
+close nothing has to ask about is unchanged. And while any file tab in this workspace is dirty, the workbench
+registers `beforeunload`, so a browser reload or window close gets the platform's own prompt — the app draws
+nothing there and registers nothing while nothing is dirty; a native window quit is the host's path above.
+
+**IDE workspace and project commands.** A second table in the same module, `IDE_SHORTCUT_COMMANDS`, registers the file and project operations: `file.new` (`Mod+N`), `folder.new` (`Mod+Shift+N`), `file.save` (`Mod+S`), and `project.open` (`Mod+O`). Unlike the destructive table these are platform-modifier chords (Cmd on apple, Ctrl on windows/linux), Shift selects only the command that asks for it, Alt never matches, and none of them act inside xterm. A browser binds none: it keeps Cmd/Ctrl+N, +O, and +S for its own window actions, and only the desktop webview delivers them to the page. `useAppShortcuts` supplies the id → handler map for all four, and every handler dispatches through the `lib/ideCommands.ts` channel (it lives in [[submodule-web-lib]], not here, because the surfaces that claim commands include `panels`, which may not import `shell`) — the same consume-once shape as `closeRequestChannel`, where a surface subscribes when it can perform the action and `requestIdeCommand` reports whether a listener ran. A command nothing has subscribed to neither acts nor swallows its chord, so registering a default keybinding never silently steals one another owner still needs: `Mod+N` keeps opening `NewWorkspaceDialog` and `Mod+S` keeps the chat-history *Save as template* until a Files or editor surface claims them. A claimed chord runs once per physical press (its `code` plus Shift state stays held until keyup, window blur, or a hidden document), is prevented, and stops immediate propagation, which is what keeps `useGlobalHotkeys` from also running on the same code (the leaf's capture listener registers before `Shell`'s own, because `AppShortcuts` is a child of `Shell`). IDE chords are suppressed while a modal layer is open, like the other app chords. Chord matching is the shared `key`-then-`code` rule above.
+
+**Claimed commands today.** `project.open` is claimed by the topbar project switcher
+([[submodule-web-shell-location-bar]]), which routes it to the same `useOpenProject` picker its *Add
+project…* item opens and stays inert — not half-handled — where no project context is mounted. `file.new`
+and `folder.new` are claimed by `FilesPanel` while it is mounted ([[submodule-web-panels]]): the chord starts
+that panel's inline **New file** / **New folder** name row. A claim stops the shell's own handler, so `Mod+N`
+is *New file* in a window that shows the Files tool and still opens `NewWorkspaceDialog` everywhere else —
+the product decision this seam explicitly refused to take silently is taken here by the surface that owns the
+operation, and the projects-rail `Mod+N` label describes the unclaimed case. `file.new` and `folder.new` are
+claimed by `FilesPanel` while it is mounted ([[submodule-web-panels]]): the chord starts that panel's inline
+**New file** / **New folder** name row. A claim stops the shell's own handler, so `Mod+N`
+is *New file* in a window that shows the Files tool and still opens `NewWorkspaceDialog` everywhere else —
+the product decision this seam explicitly refused to take silently is taken here by the surface that owns the
+operation, and the projects-rail `Mod+N` label describes the unclaimed case. `file.save` is claimed by every
+mounted file pane ([[submodule-web-panels]]): the pane decides for itself whether it is the one the workbench
+is presenting (`selectAttentionCenterTab`), so with two center groups on screen the chord saves one file, and
+a claim on a pane with nothing to save does nothing. A **chord** and a **menu item** are different requests:
+the chord never falls back (an unclaimed `Mod+N` belongs to another owner), while `runFileMenuCommand` — the
+topbar's items and the host's native File menu, which report the same ids — runs the claim or starts the
+command on the active workspace itself, so an explicit click is never silently a no-op. A Monaco surface the
+host asked to edit binds `Ctrl/Cmd+S` itself, which is what keeps the browser's own Save dialog from opening
+there.

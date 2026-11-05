@@ -9,13 +9,15 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@thinkrail/ui/dropdown-menu";
+import { useEffect, useInsertionEffect, useRef } from "react";
+import { subscribeIdeCommand } from "../../lib";
 import { useOpenProject } from "../../panels/useOpenProject";
 import { loadProjectWorkspaces } from "../../panels/workspaceActions";
 import { useAppStore } from "../../store";
 import { projectInitial } from "./locationModel";
 import { PillChevron, pillClass, Segment } from "./Segment";
 
-function goToProjectHome(projectId: string): void {
+export function goToProjectHome(projectId: string): void {
 	useAppStore.getState().selectProject(projectId, { reveal: true });
 	void loadProjectWorkspaces(projectId).catch(() => {});
 }
@@ -24,11 +26,16 @@ export function ProjectSegment({ project, atHome }: { project: Project; atHome: 
 	const t = useT();
 	const projects = useAppStore((s) => s.projects);
 	const { pickAndOpen, dialogs } = useOpenProject((opened) => goToProjectHome(opened.id));
+	const pick = useRef(pickAndOpen);
+	useInsertionEffect(() => {
+		pick.current = pickAndOpen;
+	});
+	useEffect(() => subscribeIdeCommand("project.open", () => void pick.current()), []);
 	return (
 		<Segment
 			caption={t("shell.location.project.caption")}
 			testid="scope-project-segment"
-			className="hidden max-w-[220px] shrink-[3] pl-0 sm:flex"
+			className="hidden max-w-[220px] shrink-[3] pl-0 sm:pl-8 sm:flex"
 		>
 			<DropdownMenu>
 				<DropdownMenuTrigger

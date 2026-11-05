@@ -21,6 +21,7 @@ import {
 	reviewTone,
 } from "./locationModel";
 import { chipClass, pillClass } from "./Segment";
+import { canRunFileAction } from "./TopbarFileMenu";
 
 const project: Project = { id: "p1", name: "thinkrail-copy", path: "/repo" } as Project;
 const worktree: Workspace = {
@@ -121,7 +122,7 @@ test("a user-owned workspace shows a plain Branch caption; a URL-less review sta
 	expect(html).toMatch(/<span data-testid="scope-review" data-kind="pull-request"/);
 });
 
-test("project home keeps only the Project and Workspace segments", () => {
+test("project home keeps only the File, Project and Workspace segments", () => {
 	const html = render(null);
 	expect(html).toContain('data-context="project-home"');
 	expect(html).toContain(">Project home<");
@@ -136,6 +137,7 @@ test("segments are separated by space alone and the first one starts flush", () 
 		...html.matchAll(/data-testid="(scope-[a-z]+-segment)" class="([^"]*)"/g),
 	].map(([, id, classes]) => [id, classes?.split(/\s+/) ?? []] as const);
 	expect(segmentClasses.map(([id]) => id)).toEqual([
+		"scope-file-segment",
 		"scope-project-segment",
 		"scope-workspace-segment",
 		"scope-branch-segment",
@@ -144,20 +146,45 @@ test("segments are separated by space alone and the first one starts flush", () 
 	]);
 	for (const [id, classes] of segmentClasses) {
 		expect(classes.filter((c) => /(^|:)border/.test(c))).toEqual([]);
-		if (id === "scope-project-segment") {
+		if (id === "scope-file-segment") {
 			expect(classes).toContain("pl-0");
 			expect(classes).not.toContain("pl-8");
-		} else if (id === "scope-workspace-segment") {
+			expect(classes).not.toContain("sm:pl-8");
+		} else if (id === "scope-project-segment" || id === "scope-workspace-segment") {
 			expect(classes).toEqual(expect.arrayContaining(["pl-0", "sm:pl-8"]));
+			expect(classes).not.toContain("pl-8");
 		} else {
 			expect(classes).toContain("pl-8");
 		}
 	}
 });
 
+test("the File menu is present for a workspace and for project home alike", () => {
+	for (const workspace of [worktree, userOwned, null]) {
+		const html = render(workspace);
+		const ids = testids(html);
+		expect(ids).toEqual(expect.arrayContaining(["scope-file-segment", "scope-file"]));
+		expect(html).toContain('aria-label="File actions"');
+		const segmentClasses =
+			/data-testid="scope-file-segment" class="([^"]*)"/.exec(html)?.[1]?.split(/\s+/) ?? [];
+		expect(segmentClasses).not.toContain("window-no-drag");
+		const trigger = /<button[^>]*data-testid="scope-file"[^>]*>/.exec(html)?.[0] ?? "";
+		expect(trigger).toContain("window-no-drag");
+	}
+});
+
+test("a file item needs an active workspace and a caller that supplied its handler", () => {
+	const handler = () => {};
+	expect(canRunFileAction(worktree, handler)).toBe(true);
+	expect(canRunFileAction(userOwned, handler)).toBe(true);
+	expect(canRunFileAction(null, handler)).toBe(false);
+	expect(canRunFileAction(worktree, undefined)).toBe(false);
+	expect(canRunFileAction(null, undefined)).toBe(false);
+});
+
 test("every strip value shares one text style and no caption switches typeface", () => {
 	const html = render(worktree, review);
-	for (const id of ["scope-project-name", "scope-name", "scope-branch"]) {
+	for (const id of ["scope-project-name", "scope-name", "scope-branch", "scope-file-label"]) {
 		expect(html).toMatch(new RegExp(`data-testid="${id}" class="[^"]*\\btr-title-section\\b`));
 	}
 	expect(html).not.toContain("tr-code-text");
@@ -196,6 +223,7 @@ test("the location bar never hard-codes typography or colour outside the token s
 		"WorkspaceSegment.tsx",
 		"ProjectSegment.tsx",
 		"ShipSegments.tsx",
+		"TopbarFileMenu.tsx",
 	]) {
 		const source = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
 		expect(source).not.toMatch(/\btext-\[|\bfont-(?:mono|sans|medium|semibold)\b|#[0-9a-f]{3,8}\b/);

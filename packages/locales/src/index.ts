@@ -22,6 +22,11 @@ export const SYSTEM_LOCALE = "system";
 /** Keys the desktop app renders in its native menu; the web pushes their translations to it. */
 export const DESKTOP_MENU_KEYS = [
 	"desktop.menu.edit",
+	"desktop.menu.file",
+	"desktop.menu.newFile",
+	"desktop.menu.newFolder",
+	"desktop.menu.openProject",
+	"desktop.menu.save",
 	"desktop.menu.settings",
 	"desktop.menu.quit",
 	"desktop.menu.window",

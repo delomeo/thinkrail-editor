@@ -12,9 +12,13 @@ test("pushes the active language's desktop menu and dialog labels when the nativ
 	Reflect.set(globalThis, "__THINKRAIL_NATIVE_MENU__", {
 		setLabels: (labels: Record<string, string>) => sent.push(labels),
 	});
-	applyLocale("de", { de: { "desktop.menu.edit": "Bearbeiten" } });
+	applyLocale("de", {
+		de: { "desktop.menu.edit": "Bearbeiten", "desktop.menu.newFolder": "Neuer Ordner" },
+	});
 	pushNativeMenuLabels();
 	expect(sent[0]?.["desktop.menu.edit"]).toBe("Bearbeiten");
+	expect(sent[0]?.["desktop.menu.newFolder"]).toBe("Neuer Ordner");
+	expect(sent[0]?.["desktop.menu.file"]).toBe("File");
 	expect(sent[0]?.["desktop.menu.window"]).toBe("Window");
 	expect(sent[0]?.["desktop.dialog.startFailed"]).toBe("ThinkRail could not start");
 });

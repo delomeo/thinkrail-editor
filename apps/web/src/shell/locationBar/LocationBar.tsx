@@ -6,6 +6,7 @@ import { useAppStore } from "../../store";
 import { BranchSegment } from "./BranchSegment";
 import { ProjectSegment } from "./ProjectSegment";
 import { ShipStrip } from "./ShipSegments";
+import { TopbarFileMenu } from "./TopbarFileMenu";
 import { useActiveWorkspaceSettled, WorkspaceSegment } from "./WorkspaceSegment";
 
 export function LocationBar({
@@ -16,6 +17,9 @@ export function LocationBar({
 	noteOpenReview,
 	refreshBranchStatus,
 	onNewWorkspace,
+	onNewFile,
+	onNewFolder,
+	onSaveFile,
 }: {
 	project: Project;
 	workspace: Workspace | null;
@@ -24,6 +28,9 @@ export function LocationBar({
 	noteOpenReview: (review: OpenBranchReview, url?: string) => void;
 	refreshBranchStatus: () => void;
 	onNewWorkspace: () => void;
+	onNewFile?: (() => void) | undefined;
+	onNewFolder?: (() => void) | undefined;
+	onSaveFile?: (() => void) | undefined;
 }) {
 	const workspaceSettlingSupported = useAppStore((state) => state.workspaceSettlingSupported);
 	const now = useNow();
@@ -36,6 +43,12 @@ export function LocationBar({
 			data-context={workspace ? "workspace" : "project-home"}
 			className="flex min-w-0 flex-1 items-stretch self-stretch overflow-hidden"
 		>
+			<TopbarFileMenu
+				workspace={workspace}
+				onNewFile={onNewFile}
+				onNewFolder={onNewFolder}
+				onSaveFile={onSaveFile}
+			/>
 			<ProjectSegment project={project} atHome={workspace === null} />
 			<WorkspaceSegment
 				project={project}

@@ -88,7 +88,9 @@ export interface NativeNotificationBridge {
 
 export type NativeQuitHint = "hidden" | "armed" | "release" | "quitting";
 
-export type NativeCommand = "close-item" | "open-settings";
+export type NativeIdeCommand = "file.new" | "folder.new" | "file.save" | "project.open";
+
+export type NativeCommand = "close-item" | "open-settings" | NativeIdeCommand;
 
 export interface NativeShortcutsBridge {
 	subscribeQuitHint(listener: (hint: NativeQuitHint) => void): () => void;

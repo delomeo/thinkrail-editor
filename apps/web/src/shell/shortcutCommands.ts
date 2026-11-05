@@ -1,6 +1,7 @@
 import {
 	createQuitConfirmation,
 	type NativeCommand,
+	type NativeIdeCommand,
 	type NativeQuitHint,
 	type QuitConfirmationDependencies,
 } from "@thinkrail/contracts";
@@ -8,11 +9,12 @@ import { platformFamily } from "../lib";
 
 export type ShortcutPlatform = Exclude<ReturnType<typeof platformFamily>, "other"> | "browser";
 
-export type ShortcutCommandId = NativeCommand | "quit";
+export type ShortcutCommandId = Exclude<NativeCommand, NativeIdeCommand> | "quit";
 
 interface ShortcutChord {
 	code: string;
 	inTerminal: boolean;
+	shift?: boolean;
 }
 
 interface ShortcutCommand {
@@ -53,11 +55,11 @@ type ChordEvent = Pick<
 function chordMatches(chord: ShortcutChord, event: ChordEvent) {
 	const letter = /^Key([A-Z])$/.exec(chord.code)?.[1];
 	if (letter && /^[a-z]$/i.test(event.key)) {
-		return !event.shiftKey && event.key.toUpperCase() === letter;
+		return event.shiftKey === (chord.shift === true) && event.key.toUpperCase() === letter;
 	}
 	const character = PUNCTUATION[chord.code];
 	if (character && /^[!-~]$/.test(event.key)) return event.key === character;
-	return !event.shiftKey && chord.code === event.code;
+	return event.shiftKey === (chord.shift === true) && chord.code === event.code;
 }
 
 export function matchShortcut(
@@ -127,5 +129,78 @@ export function createWebShortcuts(options: WebShortcutsOptions) {
 		quitConfirmation.reset();
 	}
 
-	return { keydown, keyup, cancel, resetQuit, run: (id: NativeCommand) => handlers[id]() };
+	return { keydown, keyup, cancel, resetQuit, run: (id: ShortcutCommandId) => handlers[id]() };
+}
+
+export type IdeCommandId = NativeIdeCommand;
+
+interface IdeCommand {
+	id: IdeCommandId;
+	chords: Partial<Record<ShortcutPlatform, readonly ShortcutChord[]>>;
+}
+
+function modChords(key: string, shift = false): IdeCommand["chords"] {
+	const chord: ShortcutChord = { code: `Key${key}`, inTerminal: false, shift };
+	return { apple: [chord], windows: [chord], linux: [chord] };
+}
+
+// Default chords; a browser binds none of them (see the owning spec).
+export const IDE_SHORTCUT_COMMANDS: readonly IdeCommand[] = [
+	{ id: "file.new", chords: modChords("N") },
+	{ id: "folder.new", chords: modChords("N", true) },
+	{ id: "file.save", chords: modChords("S") },
+	{ id: "project.open", chords: modChords("O") },
+];
+
+export function hasIdeShortcuts(platform: ShortcutPlatform) {
+	return IDE_SHORTCUT_COMMANDS.some((command) => (command.chords[platform]?.length ?? 0) > 0);
+}
+
+export function isNativeIdeCommand(command: NativeCommand): command is IdeCommandId {
+	return IDE_SHORTCUT_COMMANDS.some((entry) => entry.id === command);
+}
+
+export function matchIdeCommand(
+	event: ChordEvent,
+	platform: ShortcutPlatform,
+	inTerminal: () => boolean,
+): IdeCommandId | null {
+	const mod =
+		platform === "apple" ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+	if (!mod || event.altKey) return null;
+	for (const command of IDE_SHORTCUT_COMMANDS) {
+		const chord = command.chords[platform]?.find((candidate) => chordMatches(candidate, event));
+		if (chord && !inTerminal()) return command.id;
+	}
+	return null;
+}
+
+export interface IdeShortcutsOptions {
+	platform: ShortcutPlatform;
+	handlers: Record<IdeCommandId, () => boolean>;
+	modalOpen(): boolean;
+	isInTerminal(target: EventTarget | null): boolean;
+}
+
+type IdeKeyEvent = ShortcutKeyEvent & Pick<KeyboardEvent, "stopImmediatePropagation">;
+
+export function createIdeShortcuts(options: IdeShortcutsOptions) {
+	const claimed = new Set<string>();
+	function keydown(event: IdeKeyEvent) {
+		const id = matchIdeCommand(event, options.platform, () => options.isInTerminal(event.target));
+		if (!id || options.modalOpen()) return;
+		const press = `${event.code}:${event.shiftKey}`;
+		// An unclaimed chord stays with the rest of the app and with the browser.
+		if (!claimed.has(press) && !options.handlers[id]()) return;
+		claimed.add(press);
+		event.preventDefault();
+		event.stopImmediatePropagation();
+	}
+	function keyup(event: Pick<KeyboardEvent, "code" | "shiftKey">) {
+		claimed.delete(`${event.code}:${event.shiftKey}`);
+	}
+	function cancel() {
+		claimed.clear();
+	}
+	return { keydown, keyup, cancel };
 }

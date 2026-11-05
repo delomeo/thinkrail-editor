@@ -57,6 +57,33 @@ test("the trailing topbar action cluster owns the no-drag boundary", () => {
 	}
 });
 
+test("the leading identity group mounts the location bar once, after the mark, and adds no drag exclusion", () => {
+	const leadStart = header.indexOf('data-testid="window-chrome-inset-left"');
+	const actionsStart = header.indexOf('data-testid="topbar-actions"');
+	expect(leadStart).toBeGreaterThanOrEqual(0);
+	expect(actionsStart).toBeGreaterThan(leadStart);
+	const lead = header.slice(leadStart, actionsStart);
+	const logoIndex = lead.indexOf("<BrandLogo");
+	const barIndex = lead.indexOf("<LocationBar");
+	expect(logoIndex).toBeGreaterThanOrEqual(0);
+	expect(barIndex).toBeGreaterThan(logoIndex);
+	expect([...shellSource.matchAll(/<LocationBar\b/g)]).toHaveLength(1);
+	// The File menu is the locationBar module's, not a second topbar owner.
+	expect(shellSource).not.toContain("TopbarFileMenu");
+	for (const tag of [...lead.matchAll(jsxTag("div"))].map((m) => m[0])) {
+		expect(classAttribute(tag)).not.toContain("window-no-drag");
+	}
+});
+
+test("topbar file actions run the shared file-menu command, and add no menu of their own", () => {
+	const tag = /<LocationBar\b[\s\S]*?\/>/.exec(header)?.[0] ?? "";
+	expect(tag).toContain('onNewFile={() => runFileMenuCommand("file.new")}');
+	expect(tag).toContain('onNewFolder={() => runFileMenuCommand("folder.new")}');
+	expect(tag).toContain('onSaveFile={() => runFileMenuCommand("file.save")}');
+	// The reveal of the Files tool belongs to the command runner, not to a second topbar path.
+	expect(shellSource).not.toContain("requestToolView");
+});
+
 test("the topbar reserves host-published window-chrome insets at both edges through width tokens", () => {
 	for (const edge of ["left", "right"]) {
 		const spacer = [...header.matchAll(jsxTag("div"))]

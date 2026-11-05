@@ -99,7 +99,14 @@ not this module; the theme-aware highlighter remains app-local.
   **`tupleKey()`** length-prefixes independent strings, **`parseTupleKey()`** reads only its requested
   namespace, and **`layoutResourceIdentity()`** gives every frontend-local placement/cache alias one
   semantic resource key, so delimiters and stable noncanonical placement ids cannot split or alias identities.
-- **Public surface (barrel):** `cssColorToHex`, `isPhoneViewport`,
+  **`ideCommands.ts`** is the claim-once IDE command channel: `subscribeIdeCommand(id, listener)` returns the
+  unsubscribe, `requestIdeCommand(id)` runs every current listener for a contracts `NativeIdeCommand` id and
+  reports whether any was there. A surface subscribes only while it can perform the action, so a chord nothing
+  claimed stays available to its fallback owner; the channel holds no state between requests and knows nothing
+  about chords, menus, or which surface listens. It lives here rather than in `shell`, which grew it for the
+  chord table and the native menu bridge, because the surfaces that claim file commands are `panels` ones and
+  `panels` may not import `shell`.
+- **Public surface (barrel):** `subscribeIdeCommand`, `requestIdeCommand`, `cssColorToHex`, `isPhoneViewport`,
   `usePhoneViewport`, `normalizePath`, `isAbsolutePath`, `fileName`, `projectRelativePath` (canonical worktree-relative POSIX identity;
   collapses in-root `.`/`..` aliases but preserves an attempted leading escape for host rejection; Windows
   drive-rooted containment compares path/root case-insensitively while preserving the candidate's casing),

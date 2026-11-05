@@ -2,7 +2,7 @@
 id: submodule-web-shell-location-bar
 type: submodule-design
 status: active
-title: shell/locationBar — captioned location segments in the topbar
+title: shell/locationBar — captioned location segments and the File action menu in the topbar
 parent: submodule-web-shell
 depends-on: [submodule-web-panels]
 tags: [ui, topbar, public-surface-checked]
@@ -11,18 +11,18 @@ tags: [ui, topbar, public-surface-checked]
 ## Responsibility
 
 The persistent "where am I / what state is it in" strip after the ThinkRail mark: one row of captioned
-segments — **Project · Workspace · Branch · from base · Remote · Pull request** — whose values are the
-controls for switching project or workspace, acting on the workspace, reading or retargeting the
-branch, and taking the branch's **next delivery step** (publish, push, open a PR, sync, fix checks, mark
-ready, merge, settle). It renders
+segments — **File · Project · Workspace · Branch · from base · Remote · Pull request** — whose values are the
+controls for the file and project actions a workspace offers, switching project or workspace, acting on the
+workspace, reading or retargeting the branch, and taking the branch's **next delivery step** (publish, push,
+open a PR, sync, fix checks, mark ready, merge, settle). It renders
 what the store and `workspace.branchStatus` (older hosts: `workspace.openReview`) already report and runs
 actions through the panels-owned ship runner; it owns no host state.
 
 ## Boundary
 
 - **Owns:** the segment grammar (caption over a 20px value row, segments separated by space alone),
-  the pill/chip/split-button classes every value uses, the project switcher menu, the workspace menu
-  (actions + sibling switcher + New workspace), the branch card (copy, based-on, compare-to picker, remote
+  the pill/chip/split-button classes every value uses, the File actions menu, the project switcher menu, the
+  workspace menu (actions + sibling switcher + New workspace), the branch card (copy, based-on, compare-to picker, remote
   and review rows), the Remote and Pull request segments, and the responsive drop order.
 - **Public surface (`index.ts`):**
   - `LocationBar`
@@ -32,7 +32,8 @@ actions through the panels-owned ship runner; it owns no host state.
   `workspaceActions` (the one implementation of open-in / rename / reveal / remove / `editor.list` /
   `workspace.list`, shared with `ProjectTree`), `RemoveWorkspaceDialog`, `BranchPicker` + `branches`,
   `useOpenProject`, `useBranchStatus` (`openReviewLabel`, `resolveBranchReview`), `shipActions` (the
-  derivation), and `useShipRunner` (the action runner with its dialogs, shared with the Plan pane). A
+  derivation), and `useShipRunner` (the action runner with its dialogs, shared with the Plan pane), plus the
+  parent shell's `ideCommands` channel (`subscribeIdeCommand`) for the `project.open` command. A
   `ShipStrip` keyed by the workspace id owns the runner: a compose draft survives the segments unmounting on a
   disconnect, while moving to another workspace discards the draft, its retry, and any pending preview with
   it, so a submit can never send one workspace's draft for another (the same binding rule as rename and
@@ -66,7 +67,7 @@ actions through the panels-owned ship runner; it owns no host state.
 - Captions stay part of the header drag region; every pill, chip, link, and the inline rename
   input opts out with `window-no-drag` (unit-tested), which is the deliberate relaxation of the shell's
   "buttons only in `topbar-actions`" rule for this strip alone.
-- Drop order as the window narrows: project segment below `sm`, branch segment below `md`, a Remote
+- Drop order as the window narrows: the File and project segments below `sm`, branch segment below `md`, a Remote
   segment **without an action** below `md`, and a Pull request segment with neither a review nor a next
   action below `sm`. The workspace segment, a Pull request segment with a review or a next action, and a
   Remote segment carrying an action never hide; below `md` their split buttons collapse to the icon. The
@@ -78,9 +79,29 @@ actions through the panels-owned ship runner; it owns no host state.
 
 ## Behaviour
 
+- **File** is the strip's action menu, first in the row and hidden below `sm` (it holds the flush `pl-0`
+  slot, so Project and Workspace pad with `sm:pl-8` instead): *New file*, *New folder*, and *Save file*, then
+  *Open project*, *Start a new project…*, and *Clone repository…* through the same `useOpenProject` flows and
+  dialogs the *Add project…* item and `AddProjectMenu` run, so every entry lands on a picked, created, or cloned
+  project exactly as the Projects tree does. A file item is enabled only when there is an active workspace and
+  the caller supplied that item's handler (`canRunFileAction`). `Shell` supplies *New file* and *New folder*
+  with the store's `requestToolView` reveal intent for the Files tool, so either trigger opens and focuses the
+  Files pane of the active workspace — the strip itself still never reaches the layout engine, intents, or frame
+  state, it only calls the callback it was given. *New file*, *New folder* and *Save file* are given the
+  shell's file-menu runner (`runFileMenuCommand`, [[submodule-web-shell]]), which runs the claimed command or,
+  where nothing claimed it, starts the Files tree's own name row and opens that tool. A menu that opened a name
+  row must not then take focus back to its own trigger: a blurred empty name row is a **cancelled** create, which
+  is how this menu used to look enabled, run, and do nothing. So `onCloseAutoFocus` is prevented only for the
+  two items that start that row (the same guard the workbench tab menu uses for its rename field), and the
+  row's own focus call is what lands. It runs its own
+  `useOpenProject` instance and never subscribes the shell's `project.open` command, so `Mod+O` keeps one picker
+  (the Project segment).
 - **Project** lists every open project (check on the current one), *Project home* (disabled while there),
   and *Add project…* (the shared `useOpenProject` picker + its dialogs). Choosing a project selects it with
-  `reveal` and loads its workspace list, i.e. the same transition as the Projects tree.
+  `reveal` and loads its workspace list, i.e. the same transition as the Projects tree. While this segment is
+  mounted it subscribes the shell's `project.open` command to that same picker, so the `Mod+O` chord and the
+  menu item run one flow; the segment is the only `project.open` subscriber, which is why the chord does
+  nothing on a Project Home with no selected project.
 - **Workspace** shows the active workspace's actions (Open in, Rename, Copy path, Reveal, the rail's
   **Mark as read / unread** toggle, **Settle** or
   **Keep active** — whichever applies, through the shared `workspaceActions` — and Remove through the

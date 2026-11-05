@@ -46,7 +46,7 @@ import { LocationBar } from "./locationBar";
 import { NativeWindowControls } from "./NativeWindowControls";
 import { PROJECT_HOME_PROJECTS_REGION_ID, ProjectHome } from "./ProjectHome";
 import { SessionSwitcher } from "./SessionSwitcher";
-import { readSettingsShortcutLabel } from "./useAppShortcuts";
+import { readSettingsShortcutLabel, runFileMenuCommand } from "./useAppShortcuts";
 import { useCollapsibleRegion } from "./useCollapsibleRegion";
 import { useGlobalHotkeys } from "./useGlobalHotkeys";
 import { useNativeWindowControls } from "./useNativeWindowControls";
@@ -178,6 +178,9 @@ export function Shell() {
 							noteOpenReview={noteOpenReview}
 							refreshBranchStatus={refreshBranchStatus}
 							onNewWorkspace={() => setNewWorkspaceProjectId(contextProject.id)}
+							onNewFile={() => runFileMenuCommand("file.new")}
+							onNewFolder={() => runFileMenuCommand("folder.new")}
+							onSaveFile={() => runFileMenuCommand("file.save")}
 						/>
 					) : null}
 				</div>
