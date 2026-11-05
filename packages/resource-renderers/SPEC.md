@@ -183,7 +183,7 @@ keeps it.
 - **Monaco runs its vendored DOMPurify.** `monaco-editor` sanitizes hovers and rendered markdown with its own
   copy under `esm/vs/base/browser/dompurify`, so only a Monaco upgrade changes the sanitizer that runs; the
   `dompurify` it declares is never imported. The vendored copy predates several DOMPurify advisories. The
-  exposure is accepted: this read-only reader has no language services, hover providers or decoration
+  exposure is accepted: this reader has no language services, hover providers or decoration
   hover messages, so hover markdown is Monaco's own, and it calls DOMPurify with hooks and
   `RETURN_DOM_FRAGMENT`, never `IN_PLACE` or `SAFE_FOR_TEMPLATES`.
   Monaco 0.57 vendors 3.4.15. The root `overrides.dompurify` pin only keeps the declared copy on Mermaid's
@@ -235,7 +235,10 @@ capability-matching ids omitted from that set as unplaced too, covering renderer
 removed JSON pointer, deleted table cell, or collapsed context. A virtualized paged renderer reports against
 known page-count geometry rather than transient canvas residency, so releasing an off-screen page does not
 make its thread unplaced. A renderer with no anchor capability for its intent may ignore its review prop; the
-pane keeps those threads in its unplaced strip instead.
+pane keeps those threads in its unplaced strip instead. The file-view edit surface is part of the same
+props: `editable`, `onChange(content)` and `onSave()` ask a renderer for an editable view and take its
+whole text back on change; a renderer whose surface cannot edit hands the request to one that can, and no
+renderer writes the file itself.
 
 `HunkActions` is the mutation boundary between a diff engine and its pane. A renderer reports only the
 engine-neutral original/modified `LineSpan` pair it computed: `revert` applies that one block,
@@ -479,7 +482,9 @@ time, so four keep up. The pool's highlight cache is keyed by the diff's `cacheK
 only when both sides carry one; `PierreDiff` keys a one-sided (added or deleted) diff itself from its
 present side's hash, so a remount — a Stacked/One-file switch, or a section scrolling back in — paints
 highlighted on its first frame instead of plain text followed by a colour pop. The phone code-file implementation is Pierre `File` with the same theme and
-review grammar; desktop files alone load Monaco.
+review grammar; desktop files alone load Monaco, except that an `editable` file view always runs Monaco:
+Pierre `File` has no editing surface, so the phone implementation delegates to the Monaco view with a
+dynamic import and no inner `Suspense` (every renderer mount already has the caller's boundary).
 
 **Pierre surfaces are virtualized.** Unvirtualized Pierre puts every line in the DOM (≈400k nodes for a
 100k-line file), which WebKit — the desktop shell's engine — cannot style or lay out, hanging the app.
@@ -597,7 +602,7 @@ content's own height.
   static generated CSS (themes set only colours).
 - **The desktop Monaco surface is a reader, not a language workstation.** Its file-only options keep the
   configured wrapping, generated code typography, minimap/overview-ruler removal and 6px shadowless scrollbar,
-  and add read-only messaging, the path as its accessible label, an 8px top inset, three-character line-number
+  and add read-only messaging (only for a surface the host did not ask to edit), the path as its accessible label, an 8px top inset, three-character line-number
   gutter, full active-line paint, smooth scrolling, active bracket-pair + indentation guides, single-file
   occurrence highlighting, and ambiguous-Unicode suppression. Opaque `viewState` is restored only after its
   editor-state shape is validated and is saved on unmount, so tab switches round-trip scroll and folding.
@@ -614,13 +619,25 @@ content's own height.
   diagnostics by construction. Each editor mount owns its model: the model id is a per-mount `useId` scope
   ahead of the path, so the same file on screen twice (a chat card and its full screen, a card and the
   file's tab) never shares a model that one unmount disposes under the other.
+- **Editing a file is host-owned, and only Monaco does it.** `fileEditorOptions` maps `editable` to Monaco
+  `readOnly`, and drops the read-only message when the host asked to edit. The save keybinding is an
+  editor-instance `addAction` for `KeyMod.CtrlCmd | KeyCode.KeyS`, with no context-menu group so it stays
+  out of the menu, registered only while the surface is editable and re-registered whenever the options
+  change, so a read-only view never swallows a Cmd+S another surface owns; Monaco's keybinding service
+  consumes the chord, so the browser's own Save dialog does not open. `onDidChangeModelContent` reports
+  `onChange(editor.getValue())` and records that value as the text last applied, so the host echoing the
+  edit back through the same props never reaches `setValue`, which would reset the caret and the undo stack.
+  A model change whose text equals the text the props carry is the host's, not the reader's, and is never
+  reported as an edit. Review commenting, decorations and review zones stay attached in edit mode: it is the
+  same mount, and only `readOnly` differs.
 - **`MonacoEditor` mounts Monaco itself.** A layout effect creates the editor and its model in the commit
   that mounts the view, with no loading state, then restores the view state and attaches review commenting
   (review attaches only at mount). Its layout cleanup saves the view state before it disposes the editor
   and the model, in that order. A path change on a live editor swaps the model in place, and the language
   follows the path, because `RendererView` is keyed by implementation, not path. New text calls `setValue`
-  only when it differs from the text last applied: the editor is read-only, so the last applied text is
-  the model's text and reading it back (`getValue()`) would only cost a full copy. The model and options
+  only when it differs from the text last applied: in a read-only surface the last applied text is the
+  model's text and reading it back (`getValue()`) would only cost a full copy, so the content listener
+  returns before reading it. The model and options
   effects skip their first run, because the mount just created the editor with exactly those inputs. The
   editor lives in a layout effect, so a re-suspend inside the view's Suspense boundary disposes it (and any
   open review composer); nothing re-suspends there today, because each `RendererView` has its own boundary

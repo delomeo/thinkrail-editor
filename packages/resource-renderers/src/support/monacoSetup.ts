@@ -39,6 +39,8 @@ window.MonacoEnvironment = {
 
 const EDITOR_THEME = "thinkrail-editor";
 
+export const SAVE_FILE_KEYBINDING = monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS;
+
 const BRACKETS: [string, string][] = [
 	["(", ")"],
 	["[", "]"],
@@ -87,13 +89,13 @@ export function fileEditorOptions(
 	lineWidth: number,
 	bounded: boolean,
 	path: string,
+	editable: boolean,
 ) {
 	const fontSize = Number.parseFloat(cssVar("--tr-font-size-s11") ?? "") || 11;
 	const lineHeight = Number.parseFloat(cssVar("--tr-line-height-default") ?? "") || undefined;
 	const paddingTop = Number.parseFloat(cssVar("--space-8") ?? "");
 	const options: editor.IStandaloneEditorConstructionOptions = {
-		readOnly: true,
-		readOnlyMessage: { value: t("panels.monacoSetup.readOnly") },
+		readOnly: !editable,
 		ariaLabel: path,
 		unicodeHighlight: { ambiguousCharacters: false },
 		lineNumbersMinChars: 3,
@@ -120,6 +122,7 @@ export function fileEditorOptions(
 		hideCursorInOverviewRuler: true,
 	};
 	options.padding = { top: Number.isFinite(paddingTop) ? paddingTop : 0 };
+	if (!editable) options.readOnlyMessage = { value: t("panels.monacoSetup.readOnly") };
 	return options;
 }
 

@@ -3,7 +3,7 @@ import { File, VirtualizerContext } from "@pierre/diffs/react";
 import { RiChatNewLine as MessageSquarePlus } from "@remixicon/react";
 import { useT } from "@thinkrail/locales/react";
 import { IconButton } from "@thinkrail/ui/button";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AnchorDraft, ResourceViewProps } from "../../registry";
 import { ReviewComposer } from "../../support/ReviewComposer";
 import { ReviewThreadCard } from "../../support/ReviewThreadCard";
@@ -21,6 +21,8 @@ import {
 import { usePierreVirtualizer } from "./pierreVirtualizer";
 
 const NO_PLACED_THREADS: ReadonlySet<string> = new Set();
+
+const MonacoFile = lazy(() => import("../../support/MonacoEditor"));
 
 type FileAnnotationMetadata = { kind: "thread"; id: string } | { kind: "composer"; id: number };
 
@@ -207,6 +209,8 @@ function PierreFileSurface({
 }
 
 export default function PierreFile(props: ResourceViewProps) {
+	// Pierre's File is read-only, so an editable phone-class file view runs Monaco instead.
+	if (props.editable) return <MonacoFile {...props} />;
 	return (
 		<PierreProvider>
 			<PierreFileSurface {...props} />

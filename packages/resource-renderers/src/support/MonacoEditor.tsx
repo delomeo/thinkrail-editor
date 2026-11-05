@@ -1,5 +1,5 @@
 import { useT } from "@thinkrail/locales/react";
-import type { editor } from "monaco-editor/editor/editor.api.js";
+import type { editor, IDisposable } from "monaco-editor/editor/editor.api.js";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { type ResourceHost, useResourceHost, useResourcePreferences } from "../host";
 import type { ResourceDescriptor, ResourceViewProps, SurfaceReview } from "../registry";
@@ -12,6 +12,7 @@ import {
 	fileEditorOptions,
 	languageForPath,
 	revealLineNow,
+	SAVE_FILE_KEYBINDING,
 	syncFileModel,
 	warmLanguage,
 } from "./monacoSetup";
@@ -44,6 +45,9 @@ export default function MonacoEditor({
 	review,
 	viewState,
 	onViewState,
+	editable = false,
+	onChange,
+	onSave,
 }: ResourceViewProps) {
 	const t = useT();
 	const { fileLineWidth, fileLineWidthBounded } = useResourcePreferences();
@@ -52,13 +56,15 @@ export default function MonacoEditor({
 	const path = resource.path;
 	const text = content.kind === "text" ? content.text : "";
 	const commentLabel = t("review.widget.commentOnSelection");
-	const options = fileEditorOptions(t, fileLineWidth, fileLineWidthBounded, resource.path);
+	const saveLabel = t("common.save");
+	const options = fileEditorOptions(t, fileLineWidth, fileLineWidthBounded, path, editable);
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const commentingRef = useRef<ReviewCommenting | null>(null);
 	const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
 	const threadsRef = useRef<ReturnType<typeof attachReviewThreads> | null>(null);
 	const decorationsRef = useRef<string[]>([]);
 	const freshMountRef = useRef(false);
+	const saveActionRef = useRef<IDisposable | null>(null);
 	const appliedRef = useRef({ scope, path, text, options });
 	const latestRef = useRef({
 		scope,
@@ -69,6 +75,9 @@ export default function MonacoEditor({
 		viewState,
 		review,
 		onViewState,
+		editable,
+		onChange,
+		onSave,
 	});
 	const [reviewZones, setReviewZones] = useState<MonacoReviewZoneState>({
 		threads: [],
@@ -85,8 +94,23 @@ export default function MonacoEditor({
 			viewState,
 			review,
 			onViewState,
+			editable,
+			onChange,
+			onSave,
 		};
 	});
+
+	const applySaveAction = (codeEditor: editor.IStandaloneCodeEditor, enabled: boolean): void => {
+		saveActionRef.current?.dispose();
+		saveActionRef.current = enabled
+			? codeEditor.addAction({
+					id: `thinkrail.code.save.${codeEditor.getId()}`,
+					label: saveLabel,
+					keybindings: [SAVE_FILE_KEYBINDING],
+					run: () => latestRef.current.onSave?.(),
+				})
+			: null;
+	};
 
 	useLayoutEffect(() => {
 		const container = containerRef.current;
@@ -102,6 +126,15 @@ export default function MonacoEditor({
 			options: mount.options,
 		};
 		const menuIcons = decorateEditorContextMenus(codeEditor);
+		const modelContent = codeEditor.onDidChangeModelContent(() => {
+			const current = latestRef.current;
+			if (!current.editable) return;
+			const value = codeEditor.getValue();
+			appliedRef.current.text = value;
+			if (value === current.text) return;
+			current.onChange?.(value);
+		});
+		applySaveAction(codeEditor, mount.editable);
 		if (isEditorViewState(mount.viewState)) codeEditor.restoreViewState(mount.viewState);
 		const threads = mount.review ? attachReviewThreads(codeEditor, setReviewZones) : null;
 		const commenting = threads
@@ -112,6 +145,9 @@ export default function MonacoEditor({
 		return () => {
 			const saved = codeEditor.saveViewState();
 			if (saved) latestRef.current.onViewState?.(saved);
+			modelContent.dispose();
+			saveActionRef.current?.dispose();
+			saveActionRef.current = null;
 			menuIcons.dispose();
 			commenting?.dispose();
 			threads?.dispose();
@@ -145,6 +181,7 @@ export default function MonacoEditor({
 		if (!codeEditor || appliedRef.current.options === options) return;
 		appliedRef.current = { ...appliedRef.current, options };
 		codeEditor.updateOptions(options);
+		applySaveAction(codeEditor, editable);
 	}, [options]);
 
 	const closeComposer = () => threadsRef.current?.closeComposer();

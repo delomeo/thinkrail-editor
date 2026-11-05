@@ -8,6 +8,7 @@ import {
 	type ResourceDescriptor,
 	type ResourceRenderer,
 	type ResourceViewModule,
+	type ResourceViewProps,
 	registerResourceRenderer,
 } from "../registry";
 import { codeRenderer } from "../renderers/code";
@@ -70,10 +71,21 @@ function viewModule(label: string, warm?: ResourceViewModule["warm"]): ResourceV
 
 const TEXT = { kind: "text", text: "", hash: "h" } as const;
 
-function render(renderer: ResourceRenderer, resource: ResourceDescriptor, mobile = false) {
+function render(
+	renderer: ResourceRenderer,
+	resource: ResourceDescriptor,
+	mobile = false,
+	extra: Partial<Pick<ResourceViewProps, "editable" | "onChange" | "onSave">> = {},
+) {
 	return renderToStaticMarkup(
 		<Suspense fallback={<i>loading</i>}>
-			<RendererView renderer={renderer} mobile={mobile} resource={resource} content={TEXT} />
+			<RendererView
+				renderer={renderer}
+				mobile={mobile}
+				resource={resource}
+				content={TEXT}
+				{...extra}
+			/>
 		</Suspense>,
 	);
 }
@@ -178,6 +190,28 @@ test("phone and desktop implementations load and cache separately", async () => 
 	expect(render(renderer, resource, true)).toContain("loading");
 	expect(calls).toEqual([false, true]);
 	expect(render(renderer, resource, false)).toBe("<span>desktop</span>");
+});
+
+test("the edit surface reaches the loaded view implementation", async () => {
+	const seen: ResourceViewProps[] = [];
+	const edits: string[] = [];
+	const { renderer, resource } = testRenderer(async () => ({
+		default: (props: ResourceViewProps) => {
+			seen.push(props);
+			return null;
+		},
+	}));
+	await preloadRendererView(renderer, false, host, resource);
+	render(renderer, resource, false, {
+		editable: true,
+		onChange: (content) => edits.push(content),
+		onSave: () => edits.push("save"),
+	});
+	const props = seen[0];
+	expect(props?.editable).toBe(true);
+	props?.onChange?.("typed");
+	props?.onSave?.();
+	expect(edits).toEqual(["typed", "save"]);
 });
 
 function capturePreload(wrap: (probe: ReactNode) => ReactNode) {

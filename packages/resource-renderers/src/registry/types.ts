@@ -63,6 +63,10 @@ export interface ResourceViewProps {
 	onPlacedThreadIds?(ids: ReadonlySet<string>): void;
 	viewState?: unknown;
 	onViewState?(state: unknown): void;
+	/** The host asks for an editable surface; a renderer that cannot edit delegates to one that can. */
+	editable?: boolean;
+	onChange?(content: string): void;
+	onSave?(): void;
 }
 
 export interface HunkActions {
