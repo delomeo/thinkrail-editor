@@ -97,6 +97,7 @@
 		"release:version": "changeset version && bun install --no-frozen-lockfile",
 		"release:pack": "bun scripts/pack-pi-package.ts",
 		"release:publish": "bun scripts/publish-pi-packages.ts",
+		"release:binary": "bun scripts/publish-binary.ts",
 		"typography:generate": "bun --filter @thinkrail/web typography:generate",
 		"typography:validate": "bun --filter @thinkrail/web typography:validate",
 		"typography:check": "bun --filter @thinkrail/web typography:check",

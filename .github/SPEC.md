@@ -10,10 +10,10 @@ depends-on: [module-cli, module-desktop, module-shared, module-repo-scripts, mod
 ## Responsibility
 
 Public PR gates, contribution templates, and reusable native build recipes. Release orchestration,
-signing/notary credentials,
-source authorization, tags, checksums, and publication belong to `JetBrains/thinkrail-signing`.
-This module owns the public action inputs/outputs and artifact/version contract consumed by that private
-pipeline.
+signing/notary credentials, source authorization, tags, checksums, and publication belong to the upstream
+private `JetBrains/thinkrail-signing` pipeline, which this repository has no access to; publishing this
+repository's own releases is the `release:binary` path ([[module-repo-scripts]]). This module owns the
+public action inputs/outputs and artifact/version contract consumed by that upstream pipeline.
 
 ## Boundary
 
@@ -53,7 +53,7 @@ six-hour default.
 **Change classifier.** A `changes` job diffs the PR or merge group against its base, counting a rename as
 both its old and new path. When every changed path lies outside the app — the website and its analytics
 package, the website workflows, README and PR screenshots, the root README, CONTRIBUTING, CODE_OF_CONDUCT
-and LICENSE, and GitHub's issue/PR templates, CODEOWNERS and this spec — the classifier skips the pi-package, browser, binary,
+and LICENSE, and GitHub's issue/PR templates and this spec — the classifier skips the pi-package, browser, binary,
 Windows and desktop jobs; any other path, or a failed diff, runs them all. The exclusion list is a path
 allow-list, never a file-type rule: Markdown is product input here (skills ship in the artifacts, specs feed
 conformance gates). In the merge queue it diffs against the target branch, not the event's `base_sha`: that
@@ -201,8 +201,9 @@ The version itself comes from `.github/scripts/next-version.sh`, the one public 
 versions its update feed still advertises, so deleting a release and its tag never frees that number.
 `--tags` is therefore a consumed interface, not a test-only hook.
 
-Signing credentials and access to `codesign.labs.jb.gg` stay in the protected private pipeline. Hosted
-native jobs receive no service credentials except one owner-approved exception: a PostHog personal API
+Signing credentials and access to `codesign.labs.jb.gg` stay in the upstream pipeline's protected private
+jobs, never in this repository. Hosted native jobs receive no service credentials except one owner-approved
+exception: a PostHog personal API
 key (error-tracking write, organization read) for source-map upload. PostHog's `posthog-cli` must stamp
 chunk ids into the JS before packaging and needs that key to do so, and the maps must never ship, so the
 upload cannot move to a later protected job. The key reaches only the web build, `desktop:build` and desktop
@@ -232,6 +233,10 @@ allowlist admits only the Linux artifacts; any new platform or unexpected file b
 its signing policy is decided.
 
 ## Signing and notarization
+
+The gates below describe the upstream signed pipeline. Artifacts published from this repository through
+`release:binary` are unsigned and notarization-free, so first-launch quarantine on macOS and Defender
+prompts on Windows are expected there.
 
 Windows signing covers the CLI, the setup stub, and every PE file in the stub's adjacent payload: the
 launcher, `bun.exe`, framework DLLs and tools, the bundled `uninstall` helper that installs and applies
@@ -297,5 +302,5 @@ The `install.ps1` suite starts PowerShell once in a warm-up hook with its own bu
 the first `powershell.exe` launch on a fresh hosted runner has taken up to 31 s (2–14 s in passing runs),
 a one-time environment cost that no single test's budget should absorb.
 
-Website deployment contains no signing credentials. CODEOWNERS and the main-branch rules protect the
-public recipes; local builds and public PR jobs never publish user-facing release artifacts.
+Website deployment contains no signing credentials. The main-branch rules protect the
+public recipes; the hosted jobs and local builds here never publish JetBrains user-facing release artifacts, and a fork that serves its own releases does so through `release:binary` ([[module-repo-scripts]]).
