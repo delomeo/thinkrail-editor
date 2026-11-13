@@ -14,15 +14,8 @@ export interface PiRuntimeGeneration {
 	readonly id: number;
 	readonly runtime: ModelRuntime;
 	readonly providerStatusIds: ReadonlySet<string>;
-	readonly providerStatusNames: ReadonlyMap<string, string>;
-	readonly opaqueProviderIds: ReadonlySet<string>;
 	readonly additionalExtensionPaths: readonly string[];
-	readonly excludedSessionExtensionPaths: readonly string[];
 }
-
-export type PreparePiRuntimeGenerationResult =
-	| { outcome: "prepared"; generation: PiRuntimeGeneration }
-	| { outcome: "failed"; reason: "candidate-failed" };
 
 export type PiRuntimeGenerationInitializer = (runtime: ModelRuntime) => void | Promise<void>;
 
@@ -33,44 +26,25 @@ export const piLoginOptions: NonNullable<Parameters<ModelRuntime["login"]>[3]> =
 let nextGenerationId = 1;
 let activeGeneration: Promise<PiRuntimeGeneration> | null = null;
 let configuredExtensionPaths: readonly string[] = [];
-let configuredSessionExtensionExclusions: readonly string[] = [];
-interface PreparedRuntime {
-	runtime: ModelRuntime;
-	providerStatusIds: ReadonlySet<string>;
-	providerStatusNames: ReadonlyMap<string, string>;
-	opaqueProviderIds: ReadonlySet<string>;
-}
-let runtimeFactory: (additionalExtensionPaths: readonly string[]) => Promise<PreparedRuntime> =
+let runtimeFactory: (additionalExtensionPaths: readonly string[]) => Promise<ModelRuntime> =
 	createRuntimeWithExtensions;
 let generationInitializer: PiRuntimeGenerationInitializer = () => {};
 
-function captureProviderStatus(runtime: ModelRuntime): {
-	ids: ReadonlySet<string>;
-	names: ReadonlyMap<string, string>;
-} {
-	const providers = runtime.getProviders?.() ?? [];
-	return {
-		ids: new Set(providers.map((provider) => provider.id)),
-		names: new Map(providers.map((provider) => [provider.id, provider.name])),
-	};
+function captureProviderIds(runtime: ModelRuntime): ReadonlySet<string> {
+	return new Set((runtime.getProviders?.() ?? []).map((provider) => provider.id));
 }
 
 export function configurePiRuntime(rt: ModelRuntime | null): void {
 	configuredExtensionPaths = [];
-	configuredSessionExtensionExclusions = [];
 	if (!rt) {
 		activeGeneration = null;
 		return;
 	}
-	const providerStatus = captureProviderStatus(rt);
 	activeGeneration = Promise.resolve({
 		id: nextGenerationId++,
 		runtime: rt,
-		providerStatusIds: providerStatus.ids,
-		providerStatusNames: providerStatus.names,
-		opaqueProviderIds: new Set<string>(),
+		providerStatusIds: captureProviderIds(rt),
 		additionalExtensionPaths: [],
-		excludedSessionExtensionPaths: [],
 	});
 }
 
@@ -81,13 +55,7 @@ export function configurePiRuntimeFactory(
 		? async (additionalExtensionPaths) => {
 				const runtime = await factory(additionalExtensionPaths);
 				await generationInitializer(runtime);
-				const providerStatus = captureProviderStatus(runtime);
-				return {
-					runtime,
-					providerStatusIds: providerStatus.ids,
-					providerStatusNames: providerStatus.names,
-					opaqueProviderIds: new Set<string>(),
-				};
+				return runtime;
 			}
 		: createRuntimeWithExtensions;
 }
@@ -97,11 +65,6 @@ export function configurePiRuntimeGenerationInitializer(
 ): void {
 	if (activeGeneration) throw new Error("PI runtime already initialized");
 	generationInitializer = initializer ?? (() => {});
-}
-
-export function configurePiRuntimeSessionExtensionExclusions(paths: readonly string[]): void {
-	if (activeGeneration) throw new Error("PI runtime already initialized");
-	configuredSessionExtensionExclusions = [...new Set(paths)];
 }
 
 async function createRuntimeOfflineByDefault(): Promise<ModelRuntime> {
@@ -132,20 +95,10 @@ async function advanceExtensionCacheGeneration(): Promise<void> {
 
 async function createRuntimeWithExtensions(
 	additionalExtensionPaths: readonly string[],
-): Promise<PreparedRuntime> {
+): Promise<ModelRuntime> {
 	await advanceExtensionCacheGeneration();
 	const runtime = await createRuntimeOfflineByDefault();
 	await generationInitializer(runtime);
-	const providerStatus = captureProviderStatus(runtime);
-	const priorRegistrations = new Map(
-		runtime.getRegisteredProviderIds().map((id) => [
-			id,
-			{
-				provider: runtime.getRegisteredNativeProvider(id),
-				registration: runtime.getRegisteredProviderConfig(id),
-			},
-		]),
-	);
 	const priorJitiRebuild = process.env.JITI_REBUILD_FS_CACHE;
 	const priorJitiTryNative = process.env.JITI_TRY_NATIVE;
 	process.env.JITI_REBUILD_FS_CACHE = "1";
@@ -177,42 +130,17 @@ async function createRuntimeWithExtensions(
 	) {
 		throw new Error("PI runtime extension loading failed");
 	}
-	const postExtensionProviderStatus = captureProviderStatus(runtime);
-	const opaqueProviderIds = new Set(
-		additionalExtensionPaths.length > 0
-			? [
-					...[...postExtensionProviderStatus.ids].filter((id) => !providerStatus.ids.has(id)),
-					...runtime.getRegisteredProviderIds().filter((id) => {
-						const prior = priorRegistrations.get(id);
-						return (
-							!prior ||
-							prior.provider !== runtime.getRegisteredNativeProvider(id) ||
-							prior.registration !== runtime.getRegisteredProviderConfig(id)
-						);
-					}),
-				]
-			: [],
-	);
-	return {
-		runtime,
-		providerStatusIds: providerStatus.ids,
-		providerStatusNames: providerStatus.names,
-		opaqueProviderIds,
-	};
+	return runtime;
 }
 
 async function createGeneration(paths: readonly string[]): Promise<PiRuntimeGeneration> {
 	const additionalExtensionPaths = [...new Set(paths)];
-	const excludedSessionExtensionPaths = [...configuredSessionExtensionExclusions];
-	const prepared = await runtimeFactory(additionalExtensionPaths);
+	const runtime = await runtimeFactory(additionalExtensionPaths);
 	return {
 		id: nextGenerationId++,
-		runtime: prepared.runtime,
-		providerStatusIds: prepared.providerStatusIds,
-		providerStatusNames: prepared.providerStatusNames,
-		opaqueProviderIds: prepared.opaqueProviderIds,
+		runtime,
+		providerStatusIds: captureProviderIds(runtime),
 		additionalExtensionPaths,
-		excludedSessionExtensionPaths,
 	};
 }
 
@@ -229,22 +157,6 @@ export function getPiRuntimeGeneration(): Promise<PiRuntimeGeneration> {
 
 export async function getPiRuntime(): Promise<ModelRuntime> {
 	return (await getPiRuntimeGeneration()).runtime;
-}
-
-export async function preparePiRuntimeGeneration(
-	additionalExtensionPaths: readonly string[],
-): Promise<PreparePiRuntimeGenerationResult> {
-	try {
-		return { outcome: "prepared", generation: await createGeneration(additionalExtensionPaths) };
-	} catch {
-		return { outcome: "failed", reason: "candidate-failed" };
-	}
-}
-
-export function activatePiRuntimeGeneration(generation: PiRuntimeGeneration): void {
-	configuredExtensionPaths = generation.additionalExtensionPaths;
-	configuredSessionExtensionExclusions = generation.excludedSessionExtensionPaths;
-	activeGeneration = Promise.resolve(generation);
 }
 
 export type AvailableModelsRuntime = ModelAvailabilityRuntime;

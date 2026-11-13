@@ -9,7 +9,6 @@ import {
 	getAgentDir,
 	type InlineExtension,
 	type LoadExtensionsResult,
-	type PathMetadata,
 	type ResourceDiagnostic,
 	type ResourceLoader,
 	SettingsManager,
@@ -247,7 +246,6 @@ export async function buildResourceLoader(
 	cwd: string,
 	settingsManager: SettingsManager,
 	getAdmission: () => SkillAdmissionContext,
-	excludedExtensionPaths: readonly string[] = [],
 	extraFactories: InlineExtension[] = [],
 	session?: ExtensionSessionServices,
 ): Promise<ResourceLoader> {
@@ -286,64 +284,14 @@ export async function buildResourceLoader(
 		refreshSkillPaths(disabledAtReload);
 	};
 
-	const excluded = new Set(excludedExtensionPaths.map((path) => resolve(path)));
-	if (excluded.size === 0) {
-		const loader = new DefaultResourceLoader({
-			...common,
-			additionalExtensionPaths: devExtensionPaths,
-		});
-		const reloadTrusted = loader.reload.bind(loader);
-		loader.reload = async (options) => {
-			applyCurrentPolicy();
-			await reloadTrusted(options);
-		};
-		await loader.reload();
-		return loader;
-	}
-
-	// pi keeps a reference to this array and reads it on every reload, so it is rebuilt in place.
-	const additionalExtensionPaths: string[] = [...devExtensionPaths];
-	const packageManager = new DefaultPackageManager({
-		cwd,
-		agentDir,
-		settingsManager,
-		builtinExtensions: builtinExtensionNames(extensionFactories),
-	});
-	let discoveredMetadata = new Map<string, PathMetadata>();
-	const resolveExclusionPaths = async (): Promise<void> => {
-		await settingsManager.reload();
-		const resolvedResources = await packageManager.resolve();
-		const next: string[] = [];
-		const metadata = new Map<string, PathMetadata>();
-		for (const resource of resolvedResources.extensions) {
-			if (!resource.enabled) continue;
-			if (resource.path.startsWith(BUILTIN_EXTENSION_PREFIX)) {
-				next.push(resource.path);
-				continue;
-			}
-			if (excluded.has(resolve(resource.path))) continue;
-			next.push(resource.path);
-			metadata.set(resolve(resource.path), resource.metadata);
-		}
-		additionalExtensionPaths.splice(
-			0,
-			additionalExtensionPaths.length,
-			...devExtensionPaths,
-			...next,
-		);
-		discoveredMetadata = metadata;
-	};
 	const loader = new DefaultResourceLoader({
 		...common,
-		noExtensions: true,
-		additionalExtensionPaths,
+		additionalExtensionPaths: devExtensionPaths,
 	});
-	const reloadResolved = loader.reload.bind(loader);
+	const reloadTrusted = loader.reload.bind(loader);
 	loader.reload = async (options) => {
 		applyCurrentPolicy();
-		await resolveExclusionPaths();
-		await reloadResolved(options);
-		relabelDiscoveredExtensions(loader, discoveredMetadata);
+		await reloadTrusted(options);
 	};
 	await loader.reload();
 	return loader;
@@ -367,25 +315,6 @@ export async function isBuiltinExtensionEnabled(
 	const { extensions } = await packageManager.resolve(async () => "skip");
 	const path = `${BUILTIN_EXTENSION_PREFIX}${name}`;
 	return extensions.some((resource) => resource.path === path && resource.enabled);
-}
-
-function builtinExtensionNames(factories: readonly InlineExtension[]): string[] {
-	return factories.flatMap((entry) =>
-		typeof entry !== "function" && entry.builtin ? [entry.name] : [],
-	);
-}
-
-function relabelDiscoveredExtensions(
-	loader: DefaultResourceLoader,
-	discoveredMetadata: ReadonlyMap<string, PathMetadata>,
-): void {
-	for (const extension of loader.getExtensions().extensions) {
-		const metadata = discoveredMetadata.get(resolve(extension.resolvedPath));
-		if (!metadata) continue;
-		extension.sourceInfo = createSyntheticSourceInfo(extension.path, metadata);
-		for (const command of extension.commands.values()) command.sourceInfo = extension.sourceInfo;
-		for (const tool of extension.tools.values()) tool.sourceInfo = extension.sourceInfo;
-	}
 }
 
 function admissionCacheKey(cwd: string, ctx: SkillAdmissionContext): string {

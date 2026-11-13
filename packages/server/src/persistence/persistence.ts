@@ -7,7 +7,6 @@ import {
 	DEFAULT_CONFIG,
 	type HostEnvironment,
 	isComposerGrowthLimit,
-	isJbcentralQuotaRefreshSeconds,
 	isLineWidth,
 	isLocalePreference,
 	isSettleIdleDays,
@@ -388,13 +387,6 @@ export function loadConfig(): AppConfig {
 		subagentMaxConcurrent: isSubagentMaxConcurrent(value.subagentMaxConcurrent)
 			? value.subagentMaxConcurrent
 			: DEFAULT_CONFIG.subagentMaxConcurrent,
-		jbcentralQuotaEnabled:
-			typeof value.jbcentralQuotaEnabled === "boolean"
-				? value.jbcentralQuotaEnabled
-				: DEFAULT_CONFIG.jbcentralQuotaEnabled,
-		jbcentralQuotaRefreshSeconds: isJbcentralQuotaRefreshSeconds(value.jbcentralQuotaRefreshSeconds)
-			? value.jbcentralQuotaRefreshSeconds
-			: DEFAULT_CONFIG.jbcentralQuotaRefreshSeconds,
 		customLayoutPresets: Array.isArray(value.customLayoutPresets)
 			? value.customLayoutPresets
 			: DEFAULT_CONFIG.customLayoutPresets,

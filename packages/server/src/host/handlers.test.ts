@@ -26,7 +26,6 @@ import {
 	disposeAllSessions,
 	setSessionManagerFactory,
 } from "../agent";
-import { recordAcceptedMessage, resetFeedbackForTests, setFeedbackPublisher } from "../feedback";
 import { defaultSessionDirFor, writeFixtureSession } from "../history/testFixtures";
 import { addComment, getReviewSnapshot } from "../reviews";
 import { resetConfigCache } from "../settings";
@@ -527,33 +526,6 @@ test("extension.list reflects disabledExtensions written through settings.update
 		{ name: "ask-user-question", enabled: true },
 		{ name: "web-access", enabled: true },
 	]);
-});
-
-test("disabled JetBrains quota returns hidden through its handler", async () => {
-	await handleRequest("settings.update", { config: { jbcentralQuotaEnabled: false } }, CTX);
-	expect(await handleRequest("provider.jbcentralQuota", { force: true }, CTX)).toEqual({
-		state: "hidden",
-	});
-});
-
-test("feedback.respond persists a popup action through the handler", async () => {
-	setFeedbackPublisher(() => true);
-	for (let count = 0; count < 10; count += 1) recordAcceptedMessage(CTX.clientKey);
-
-	expect(await handleRequest("feedback.respond", { action: "postpone" }, CTX)).toEqual({
-		ok: true,
-	});
-	expect(JSON.parse(readFileSync(join(dataDir, "feedback.json"), "utf8"))).toEqual({
-		acceptedMessages: 10,
-		nextInvitationAt: 20,
-		dismissed: false,
-	});
-});
-
-test("feedback.respond rejects an action outside the wire union", async () => {
-	await expect(handleRequest("feedback.respond", { action: "later" }, CTX)).rejects.toThrow(
-		"Invalid interview response",
-	);
 });
 
 test("project.setTrust grants pi-level resource trust only when the request asks for resources", async () => {

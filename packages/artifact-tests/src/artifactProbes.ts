@@ -189,24 +189,6 @@ function assertExternalModel(models: unknown): asserts models is Record<string, 
 	);
 }
 
-async function assertCentralConfigured(socket: WebSocket, label: string): Promise<void> {
-	let state: unknown;
-	for (let attempt = 0; attempt < 40; attempt += 1) {
-		const status = (await within(
-			rpc(socket, "provider.status", {}),
-			10_000,
-			`${label} status`,
-		)) as {
-			jbcentral?: { state?: unknown };
-		};
-		state = status.jbcentral?.state;
-		if (state === "configured") return;
-		if (state !== "configuring") break;
-		await Bun.sleep(250);
-	}
-	throw new Error(`${label} Central state is ${JSON.stringify(state)}, expected configured`);
-}
-
 async function assertStrictVisualizeValidation(
 	socket: WebSocket,
 	workspaceId: string,
@@ -381,31 +363,6 @@ export function hostEnvironment(
 	return { ...inherited, ...overrides };
 }
 
-function createCentralExecutable(fakeBinDir: string): void {
-	if (process.platform !== "win32") {
-		writeFileSync(
-			join(fakeBinDir, "central"),
-			'#!/bin/sh\n[ "$1" = "--version" ] || exit 8\nprintf \'central 1.6.2 (synthetic artifact metadata)\\n\'\n',
-			{ mode: 0o755 },
-		);
-		return;
-	}
-	const source = join(fakeBinDir, "central.ts");
-	writeFileSync(
-		source,
-		'if (process.argv[2] !== "--version") process.exit(8); console.log("central 1.6.2 (synthetic artifact metadata)");\n',
-	);
-	const build = Bun.spawnSync([
-		process.execPath,
-		"build",
-		"--compile",
-		source,
-		"--outfile",
-		join(fakeBinDir, "central.exe"),
-	]);
-	assert(build.success, `could not build the synthetic Central executable: ${build.stderr}`);
-}
-
 export async function runArtifactHostProbes(adapter: ArtifactHostAdapter): Promise<void> {
 	const root = mkdtempSync(join(tmpdir(), `thinkrail-${adapter.name}-artifact-`));
 	const homeDir = join(root, "home");
@@ -414,11 +371,10 @@ export async function runArtifactHostProbes(adapter: ArtifactHostAdapter): Promi
 	const agentDir = join(root, "pi-agent");
 	mkdirSync(homeDir, { recursive: true });
 	mkdirSync(fakeBinDir, { recursive: true });
-	createCentralExecutable(fakeBinDir);
-	const centralArtifact = join(homeDir, ".pi", "agent", "extensions", "jetbrains-central.ts");
-	mkdirSync(dirname(centralArtifact), { recursive: true });
+	const externalArtifact = join(homeDir, ".pi", "agent", "extensions", "compiled-external.ts");
+	mkdirSync(dirname(externalArtifact), { recursive: true });
 	writeFileSync(
-		centralArtifact,
+		externalArtifact,
 		`import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
 import { clampThinkingLevel } from "@earendil-works/pi-ai/models";
@@ -519,7 +475,6 @@ export default function syntheticExternalExtension(pi) {
 		defaultHost = await adapter.launch(defaultEnv, "default-agent");
 		socket = await within(connectRpc(defaultHost.origin), 10_000, "default host WebSocket");
 		assertExternalModel(await within(rpc(socket, "model.list", {}), 20_000, "default model.list"));
-		await assertCentralConfigured(socket, "default-agent");
 		socket.close();
 		socket = undefined;
 		await defaultHost.stop();
@@ -539,7 +494,6 @@ export default function syntheticExternalExtension(pi) {
 		socket = await within(connectRpc(customHost.origin), 10_000, "custom host WebSocket");
 		const models = await within(rpc(socket, "model.list", {}), 20_000, "custom model.list");
 		assertExternalModel(models);
-		await assertCentralConfigured(socket, "custom-agent");
 		const externalModel = models.find(
 			(model) => model.provider === "compiled-external" && model.id === "compiled-external-model",
 		);

@@ -7,13 +7,11 @@ import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai/prov
 import { ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 import { TODO_NUDGE_PREFIX, type WsResult } from "@thinkrail/contracts";
 import {
-	activatePiRuntimeGeneration,
 	configurePiRuntime,
 	configurePiRuntimeFactory,
 	disposeAllSessions,
 	getSessionRuntimeGeneration,
 	isSessionStreaming,
-	preparePiRuntimeGeneration,
 	setSessionCreatedPublisher,
 	setSessionManagerFactory,
 	setSessionPublisher,
@@ -366,10 +364,7 @@ test("retained sessions keep their generation's API-key auth when new same-provi
 		refreshOnCreate: false,
 	});
 	const nextFaux = await addFauxProvider(nextRuntime, nextCredentials, "anthropic", "subscription");
-	configurePiRuntimeFactory(async () => nextRuntime);
-	const candidate = await preparePiRuntimeGeneration([]);
-	if (candidate.outcome !== "prepared") throw new Error("Candidate was not prepared");
-	activatePiRuntimeGeneration(candidate.generation);
+	configurePiRuntime(nextRuntime);
 	const newId = await createChat(nextFaux);
 	await handleRequest(
 		"session.rename",
@@ -383,7 +378,7 @@ test("retained sessions keep their generation's API-key auth when new same-provi
 	);
 	expect(await usePiRuntime((current) => current === nextRuntime)).toBe(true);
 	expect(getSessionRuntimeGeneration(retainedId)).toBe(retainedGeneration);
-	expect(getSessionRuntimeGeneration(newId)).toBe(candidate.generation);
+	expect(getSessionRuntimeGeneration(newId)).not.toBe(retainedGeneration);
 	await handleRequest("session.prompt", { sessionId: retainedId, text: `${PRIVATE}-old` }, context);
 	await handleRequest("session.prompt", { sessionId: newId, text: `${PRIVATE}-new` }, context);
 	await shutdownAnalytics();

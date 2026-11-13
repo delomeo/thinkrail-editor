@@ -3,7 +3,6 @@ import {
 	type AppConfigUpdate,
 	COMPOSER_GROWTH_LIMITS,
 	isComposerGrowthLimit,
-	isJbcentralQuotaRefreshSeconds,
 	isLineWidth,
 	isLocalePreference,
 	isSettleIdleDays,
@@ -50,8 +49,6 @@ const ACCEPTED_UPDATE_KEYS = {
 	agentReviewEnabled: true,
 	subagentsEnabled: true,
 	subagentMaxConcurrent: true,
-	jbcentralQuotaEnabled: true,
-	jbcentralQuotaRefreshSeconds: true,
 	settleIdleDays: true,
 	disabledExtensions: true,
 	locale: true,
@@ -165,8 +162,6 @@ export function updateConfig(partial: AppConfigUpdate): AppConfig {
 		theme,
 		themeMode,
 		systemThemePair,
-		jbcentralQuotaEnabled,
-		jbcentralQuotaRefreshSeconds,
 		disabledExtensions,
 		...rest
 	} = runtimeUpdate;
@@ -189,9 +184,6 @@ export function updateConfig(partial: AppConfigUpdate): AppConfig {
 	) {
 		throw new Error("subagentMaxConcurrent must be a whole number from 1 to 16");
 	}
-	if (jbcentralQuotaEnabled !== undefined && typeof jbcentralQuotaEnabled !== "boolean") {
-		throw new Error("jbcentralQuotaEnabled must be a boolean");
-	}
 	if (
 		runtimeUpdate.terminalWindowsShell !== undefined &&
 		!isTerminalWindowsShell(runtimeUpdate.terminalWindowsShell)
@@ -210,11 +202,6 @@ export function updateConfig(partial: AppConfigUpdate): AppConfig {
 	) {
 		throw new Error(`composerGrowthLimit must be one of ${COMPOSER_GROWTH_LIMITS.join(", ")}`);
 	}
-	if (
-		jbcentralQuotaRefreshSeconds !== undefined &&
-		!isJbcentralQuotaRefreshSeconds(jbcentralQuotaRefreshSeconds)
-	) {
-		throw new Error("jbcentralQuotaRefreshSeconds must be a whole number from 1 to 3600");
 	}
 	if (
 		runtimeUpdate.settleIdleDays !== undefined &&
@@ -255,8 +242,6 @@ export function updateConfig(partial: AppConfigUpdate): AppConfig {
 		themeMode: nextThemeMode,
 		...(nextSystemThemePair ? { systemThemePair: nextSystemThemePair } : {}),
 		...(subagentsEnabled === undefined ? {} : { subagentsEnabled }),
-		...(jbcentralQuotaEnabled === undefined ? {} : { jbcentralQuotaEnabled }),
-		...(jbcentralQuotaRefreshSeconds === undefined ? {} : { jbcentralQuotaRefreshSeconds }),
 		...(customLayoutPresets === undefined
 			? {}
 			: { customLayoutPresets: validateCustomLayoutPresets(customLayoutPresets) }),

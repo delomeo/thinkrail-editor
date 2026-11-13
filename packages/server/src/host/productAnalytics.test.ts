@@ -31,7 +31,6 @@ import {
 	captureReviewCommentAdded,
 	captureReviewCommentResolved,
 	captureReviewCommentsSent,
-	centralConnectOutcome,
 	directoryPickOutcome,
 	failureReason,
 	initialAdditionalAnalyticsEnabled,
@@ -173,22 +172,9 @@ test("readiness deduplicates actual state per grant and never replays a stale as
 	expect(await captured("setup_state_observed")).toEqual([]);
 });
 
-test("readiness uses existing provider truth without probing Central or any provider", () => {
-	const report: ProviderStatusReport = {
-		providers: [],
-		jbcentral: { state: "absent" },
-		jbcentralInstall: { platform: "private", shell: "bash", command: "secret" },
-	};
+test("readiness uses existing provider truth without probing any provider", () => {
+	const report: ProviderStatusReport = { providers: [] };
 	expect(providerAvailability(report)).toBe("no");
-	expect(
-		providerAvailability({ ...report, jbcentral: { state: "probe-failed", reason: "timed-out" } }),
-	).toBe("unknown");
-	expect(
-		providerAvailability({
-			...report,
-			jbcentral: { state: "configured", version: "private", signedOut: false, proxyStopped: false },
-		}),
-	).toBe("yes");
 	expect(
 		providerAvailability({
 			...report,
@@ -198,14 +184,10 @@ test("readiness uses existing provider truth without probing Central or any prov
 });
 
 test("setup reports applied outcomes, not resolved-but-failed results or error text", async () => {
-	expect(centralConnectOutcome({ outcome: "failed", reason: "unsupported-version" })).toEqual({
-		outcome: "failed",
-		reason: "unsupported",
-	});
 	await observeSetupAction(
 		"provider_connect",
 		async () => ({ outcome: "failed", reason: "candidate-failed" }) as const,
-		centralConnectOutcome,
+		() => ({ outcome: "failed", reason: "unknown" }),
 	);
 	await observeSetupAction("project_open", () => ({ path: "/secret/repo" }));
 	await expect(

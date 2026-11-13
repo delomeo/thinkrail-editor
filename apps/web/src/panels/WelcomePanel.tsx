@@ -11,7 +11,6 @@ import { selectOnboardingEligible, selectSupportsOnboarding, toast, useAppStore 
 import { errorText, getTransport } from "../transport";
 import { AddProjectMenu } from "./AddProjectMenu";
 import { ConnectedLine, type ConnectedSummary } from "./ConnectedLine";
-import { connectedProviderName } from "./ConnectProviderOptions";
 import { enterDefaultWorkspace } from "./defaultWorkspace";
 import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
 import { OnboardingWizard } from "./OnboardingWizard";
@@ -175,7 +174,7 @@ export function WelcomePanel() {
 							hasProvider={hasProvider}
 							onConnected={(p) =>
 								setJustConnected({
-									provider: connectedProviderName(p, t),
+									provider: p.name,
 									models: null,
 									defaultModel: null,
 								})

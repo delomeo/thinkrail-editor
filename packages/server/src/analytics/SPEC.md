@@ -38,8 +38,8 @@ decides that case rather than pi's placeholder model (which would otherwise buck
 a resolved chat reports the model the created session actually holds (a startup extension may switch it).
 "Created a chat but had nothing to send with" thus stays distinguishable from a configured custom provider.
 Sends count after `ackSend`, exclude TODO-control nudges, and do not prove successful execution. Login
-requires correlated success, or the existing applied Central connection action. `auth_method` is a closed
-`api_key | subscription | oauth | central | other | unknown` category, never credentials or account/plan
+requires correlated success. `auth_method` is a closed
+`api_key | subscription | oauth | other | unknown` category, never credentials or account/plan
 identities. It describes the observed authentication path, not billing entitlement. Host captures send
 metadata before dispatch, uses each session/login's retained runtime, and leaves ambiguous modes
 other/unknown. Central provenance uses loader registration metadata without inspecting opaque auth.
@@ -219,7 +219,7 @@ survives preference off/on, while active enrichment does not. Other state has no
 Counts describe installations, not people. Every event carries `app_version`, `channel`, `os`, `arch`, `build`
 plus its
 closed properties. Only built-in provider/model names pass raw; custom values become `custom`, preserving
-the existing explicit `jbcentral` login name. No chat/file contents, paths/names, resource IDs, credentials,
+No chat/file contents, paths/names, resource IDs, credentials,
 error messages, token/cost counts or recordings are collected; error reports carry only the
 allow-listed shape above.
 

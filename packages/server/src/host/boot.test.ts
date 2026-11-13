@@ -13,7 +13,6 @@ import {
 	initializeAnalytics,
 	resetAnalyticsForTests,
 } from "../analytics";
-import { resetJbcentralStateForTests } from "../auth";
 import { logger } from "../log";
 import { resetConfigCache, updateConfig } from "../settings";
 import { type BootedHost, bootHost } from "./boot";
@@ -134,7 +133,6 @@ beforeAll(async () => {
 
 beforeEach(async () => {
 	resetConfigCache();
-	await resetJbcentralStateForTests();
 	configurePiRuntime(null);
 	configurePiRuntimeFactory(async () => testRuntime);
 	const dir = mkdtempSync(join(tmpdir(), "thinkrail-boot-data-"));
@@ -149,7 +147,6 @@ afterEach(async () => {
 	while (tmpDirs.length) rmSync(tmpDirs.pop() as string, { recursive: true, force: true });
 	if (originalDataDir === undefined) delete process.env.THINKRAIL_DATA_DIR;
 	else process.env.THINKRAIL_DATA_DIR = originalDataDir;
-	await resetJbcentralStateForTests();
 	configurePiRuntimeFactory();
 	configurePiRuntime(null);
 });

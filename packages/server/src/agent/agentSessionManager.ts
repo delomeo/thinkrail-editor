@@ -107,7 +107,6 @@ import {
 	showPendingMcpReload,
 	watchMcpStatus,
 } from "./mcpSessions";
-import { refreshModelListings } from "./modelAvailability";
 import { preferredDefaultModel } from "./modelDefaults";
 import {
 	getPiRuntimeGeneration,
@@ -1068,9 +1067,9 @@ export function toWireModel(model: Model<string>, auth?: WireModelAuth): WireMod
 
 function sessionWireModel(
 	model: Model<string>,
-	generation: Pick<PiRuntimeGeneration, "runtime" | "opaqueProviderIds">,
+	generation: Pick<PiRuntimeGeneration, "runtime">,
 ): WireModel {
-	return toWireModel(model, catalogProviderAuth(generation, model.provider));
+	return toWireModel(model, catalogProviderAuth(generation.runtime, model.provider));
 }
 
 function resolveWireModel(
@@ -1462,7 +1461,6 @@ async function createParentSessionInternal(
 				cwd,
 				settingsManager,
 				() => skillAdmissionResolver(workspaceId),
-				generation.excludedSessionExtensionPaths,
 				[
 					subagents.extension,
 					createBackgroundCommandsExtension({ service: commands }),
@@ -2685,7 +2683,6 @@ export function getSessionCommands(sessionId: string): SlashCommandInfo[] {
 export async function listAvailableModels(): Promise<WireModel[]> {
 	const generation = await getPiRuntimeGeneration();
 	void refreshCatalogs(generation.runtime);
-	void refreshModelListings(generation.runtime, generation.opaqueProviderIds);
 	return readAvailableWireModels(generation);
 }
 
@@ -2695,10 +2692,7 @@ export async function listSettledModels(): Promise<WireModel[]> {
 
 export async function refreshAvailableModels(force = false): Promise<RefreshedModels> {
 	const generation = await getPiRuntimeGeneration();
-	const [{ completed }] = await Promise.all([
-		refreshCatalogs(generation.runtime, { force }),
-		refreshModelListings(generation.runtime, generation.opaqueProviderIds, { force }),
-	]);
+	const [{ completed }] = await Promise.all([refreshCatalogs(generation.runtime, { force })]);
 	return { models: readAvailableWireModels(generation), complete: completed };
 }
 
@@ -2708,7 +2702,7 @@ function readAvailableWireModels(generation: PiRuntimeGeneration): WireModel[] {
 		const model = m as unknown as Model<string>;
 		let auth = authByProvider.get(model.provider);
 		if (!auth) {
-			auth = catalogProviderAuth(generation, model.provider);
+			auth = catalogProviderAuth(generation.runtime, model.provider);
 			authByProvider.set(model.provider, auth);
 		}
 		return toWireModel(model, auth);

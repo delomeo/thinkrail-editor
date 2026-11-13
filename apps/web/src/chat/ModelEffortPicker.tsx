@@ -40,7 +40,6 @@ import { cn } from "@thinkrail/ui/utils";
 import { type CSSProperties, forwardRef, useImperativeHandle, useMemo, useState } from "react";
 import { ModelEffortPill, TONE_TEXT } from "./ModelEffortLabel";
 import {
-	CENTRAL_KIND_TAG,
 	COSTLY_LEVELS,
 	costLabel,
 	describeAuth,
@@ -120,17 +119,6 @@ function KindGlyph({ model, className }: { model: WireModel; className?: string 
 			return <InfinityMark className={cn("size-12 shrink-0", className)} />;
 		case "env":
 			return <Braces className={cn("size-12 shrink-0", className)} />;
-		case "central":
-			return (
-				<span
-					className={cn(
-						"inline-flex h-14 shrink-0 items-center rounded-sm border border-control-border-active px-2 tr-code-text-small leading-none",
-						className,
-					)}
-				>
-					{CENTRAL_KIND_TAG}
-				</span>
-			);
 		default:
 			return null;
 	}

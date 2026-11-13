@@ -1,22 +1,14 @@
-import type {
-	JbcentralInstall,
-	JbcentralStatus,
-	ProviderStatus,
-	ProviderStatusReport,
-} from "@thinkrail/contracts";
-import { jbcentralInstall } from "@thinkrail/shared/jbcentral";
+import type { ProviderStatus, ProviderStatusReport } from "@thinkrail/contracts";
 import {
 	describeProviderAuth,
 	type ProviderAuthFacts,
 	settledAvailableModels,
 	usePiRuntime,
 } from "../agent";
-import { getJbcentralStatus } from "./jbcentral";
 
 export interface ProviderStatusSources {
 	modelProviderIds: Set<string>;
 	availableProviders: Set<string>;
-	centralProviders: Set<string>;
 	credentialProviders: string[];
 	oauthProviders: { id: string; name: string }[];
 	credentialType: (id: string) => "oauth" | "api_key" | undefined;
@@ -24,8 +16,6 @@ export interface ProviderStatusSources {
 	apiKeyLogin: (id: string) => boolean;
 	displayName: (id: string) => string;
 	hasAuth: (id: string) => boolean;
-	jbcentral: JbcentralStatus;
-	jbcentralInstall: JbcentralInstall;
 }
 
 export function buildProviderReport(sources: ProviderStatusSources): ProviderStatusReport {
@@ -54,7 +44,6 @@ export function buildProviderReport(sources: ProviderStatusSources): ProviderSta
 		const { source, label } = sources.providerAuth(id);
 		const credentialType = sources.credentialType(id);
 		const auth = describeProviderAuth({
-			central: sources.centralProviders.has(id),
 			oauth: credentialType === "oauth",
 			apiKeyCredential: credentialType === "api_key",
 			...(source === undefined ? {} : { source }),
@@ -67,16 +56,10 @@ export function buildProviderReport(sources: ProviderStatusSources): ProviderSta
 		if (a.configured !== b.configured) return a.configured ? -1 : 1;
 		return a.name.localeCompare(b.name);
 	});
-	return {
-		providers,
-		jbcentral: sources.jbcentral,
-		jbcentralInstall: sources.jbcentralInstall,
-	};
+	return { providers };
 }
 
 export async function getProviderStatus(): Promise<ProviderStatusReport> {
-	const jbcentral = await getJbcentralStatus();
-	const install = jbcentralInstall(process.platform);
 	return usePiRuntime(async (runtime, generation) => {
 		const providerStatusIds = [...generation.providerStatusIds];
 		try {
@@ -100,16 +83,12 @@ export async function getProviderStatus(): Promise<ProviderStatusReport> {
 		const credentialTypes = new Map(
 			visibleCredentials.map((credential) => [credential.providerId, credential.type]),
 		);
-		const centralProviders = new Set(
-			providerStatusIds.filter((providerId) => generation.opaqueProviderIds.has(providerId)),
-		);
 
 		return buildProviderReport({
 			modelProviderIds: new Set(
 				providerStatusIds.filter((providerId) => runtime.getModels(providerId).length > 0),
 			),
 			availableProviders: new Set(available.map((model) => model.provider)),
-			centralProviders,
 			credentialProviders: visibleCredentials.map((credential) => credential.providerId),
 			oauthProviders: visibleProviders
 				.filter((provider) => provider.auth.oauth)
@@ -120,13 +99,8 @@ export async function getProviderStatus(): Promise<ProviderStatusReport> {
 			credentialType: (id) => credentialTypes.get(id),
 			providerAuth: (id) => runtime.getProviderAuthStatus(id),
 			apiKeyLogin: (id) => Boolean(runtime.getProvider(id)?.auth.apiKey?.login),
-			displayName: (id) =>
-				centralProviders.has(id)
-					? (generation.providerStatusNames.get(id) ?? id)
-					: (runtime.getProvider(id)?.name ?? id),
+			displayName: (id) => runtime.getProvider(id)?.name ?? id,
 			hasAuth: (id) => runtime.getProviderAuthStatus(id).configured,
-			jbcentral,
-			jbcentralInstall: install,
 		});
 	});
 }

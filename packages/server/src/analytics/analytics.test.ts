@@ -253,7 +253,6 @@ test.each([
 	"api_key",
 	"subscription",
 	"oauth",
-	"central",
 	"other",
 	"unknown",
 ] as const)("auth_method=%s remains basic metadata without additional consent", async (auth_method) => {

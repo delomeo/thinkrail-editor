@@ -5,17 +5,14 @@ import {
 } from "@remixicon/react";
 import type { DetectedAccount, DetectedAccountSource, ProviderStatus } from "@thinkrail/contracts";
 import type { MessageKey } from "@thinkrail/locales";
-import { type Translator, t as translate, useT } from "@thinkrail/locales/react";
+import { t as translate, useT } from "@thinkrail/locales/react";
 import { Button } from "@thinkrail/ui/button";
 import { SkeletonRows } from "@thinkrail/ui/skeleton";
-import { type ComponentProps, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { toast } from "@/store";
 import { getTransport } from "@/transport";
-import { JetBrainsAiCard } from "./JetBrainsAiCard";
 import { ProviderRow } from "./ProviderRow";
 import type { ProviderAuth } from "./useProviderAuth";
-
-const JETBRAINS_AI_SEARCH = "jetbrains ai central";
 
 type Method = "oauth" | "api_key";
 
@@ -51,10 +48,6 @@ interface DetectedChoice {
 	provider: ProviderStatus;
 }
 
-export function connectedProviderName(provider: ProviderStatus, t: Translator): string {
-	return provider.kind === "central" ? t("settings.jbcentral.title") : provider.name;
-}
-
 export async function announceProviderConnected(provider: ProviderStatus): Promise<void> {
 	const models = await getTransport()
 		.request("model.list", {})
@@ -64,7 +57,7 @@ export async function announceProviderConnected(provider: ProviderStatus): Promi
 			? translate("panels.connectProvider.modelsAvailable", { count: models.length })
 			: translate("panels.connectProvider.agentCanRun"),
 		translate("auth.login.connectedTitle", {
-			provider: connectedProviderName(provider, translate),
+			provider: provider.name,
 		}),
 	);
 }
@@ -117,9 +110,7 @@ export function ConnectProviderOptions({
 	}
 	if (!report || detected === null) return <SkeletonRows rows={3} />;
 
-	const unconfigured = report.providers.filter(
-		(p) => !p.configured && p.kind !== "central" && (p.canOAuth || p.canApiKey),
-	);
+	const unconfigured = report.providers.filter((p) => !p.configured && (p.canOAuth || p.canApiKey));
 	const found = detected.flatMap((account): DetectedChoice[] => {
 		if (!Object.hasOwn(DETECTED_COPY, account.source)) return [];
 		const provider = unconfigured.find((p) => p.id === account.providerId && p.canOAuth);
@@ -132,9 +123,7 @@ export function ConnectProviderOptions({
 			query ? p.name.toLowerCase().includes(query) || p.id.includes(query) : !featured.has(p),
 		)
 		.sort((a, b) => (b.canOAuth ? 1 : 0) - (a.canOAuth ? 1 : 0));
-	const centralInstalled = report.jbcentral.state !== "absent";
-	const detectedCount = found.length + (centralInstalled ? 1 : 0);
-	const showJetBrainsRow = !centralInstalled && (!query || JETBRAINS_AI_SEARCH.includes(query));
+	const detectedCount = found.length;
 	const connect = (p: ProviderStatus, method: Method) => void startLogin(p.id, method);
 
 	return (
@@ -151,18 +140,6 @@ export function ConnectProviderOptions({
 						<span className="self-start rounded-full border border-primary-muted bg-clip-padding bg-primary-subtle px-8 py-2 tr-text-label-pill text-primary">
 							{t("panels.connectProvider.detectedLabel")}
 						</span>
-						{centralInstalled ? (
-							<div
-								data-testid="connect-detected-central"
-								className="rounded-sm border border-primary-muted bg-clip-padding bg-container-workspace-bg p-12"
-							>
-								<JetBrainsAiCard
-									status={report.jbcentral}
-									install={report.jbcentralInstall}
-									onChanged={load}
-								/>
-							</div>
-						) : null}
 						{found.map(({ account, provider }) => (
 							<DetectedChoiceButton
 								key={account.source}
@@ -206,51 +183,13 @@ export function ConnectProviderOptions({
 							onApiKey={() => connect(p, "api_key")}
 						/>
 					))}
-					{showJetBrainsRow ? (
-						<JetBrainsAiRow
-							status={report.jbcentral}
-							install={report.jbcentralInstall}
-							onChanged={load}
-						/>
-					) : null}
-					{!showJetBrainsRow && others.length === 0 ? (
+					{others.length === 0 ? (
 						<p className="py-16 text-center text-text-muted tr-text-metadata">
 							{t("panels.connectProvider.noMatch")}
 						</p>
 					) : null}
 				</div>
 			</section>
-		</div>
-	);
-}
-
-function JetBrainsAiRow(props: ComponentProps<typeof JetBrainsAiCard>) {
-	const t = useT();
-	const [open, setOpen] = useState(false);
-	return (
-		<div
-			data-testid="jetbrains-ai-row"
-			className="flex flex-col border-border-muted border-b py-12"
-		>
-			<div className="flex items-center gap-8">
-				<span className="min-w-0 flex-1 truncate tr-text-ui text-text-default">
-					{t("settings.jbcentral.title")}
-				</span>
-				<Button
-					variant="outline"
-					size="m"
-					data-testid="jetbrains-ai-setup"
-					aria-expanded={open}
-					onClick={() => setOpen((o) => !o)}
-				>
-					{t("panels.connectProvider.centralSetUp")}
-				</Button>
-			</div>
-			{open ? (
-				<div className="pt-12">
-					<JetBrainsAiCard {...props} />
-				</div>
-			) : null}
 		</div>
 	);
 }

@@ -58,7 +58,7 @@ Durable decisions every feature follows; [[architecture]] carries the structure 
   `pi` — prompt context, files, pi's own skills/extensions — and the flags a session starts with.
 - **Expose, don't recompute.** The host shows what `pi` reports rather than deriving its own copy.
 - **The user's own tools and credentials.** Git, GitHub, and model access go through the user's `git`,
-  `gh`, `central` CLI, and pi's provider auth; ThinkRail keeps no accounts or tokens of its own.
+  `gh` CLI, and pi's provider auth; ThinkRail keeps no accounts or tokens of its own.
 - **Trust is explicit.** What a cloned repository could inject into the agent — its committed skill
   aliases, pi's own project resources (`.pi/` settings, extensions, skills, prompts, subagent definitions),
   and MCP servers it defines — loads only after a per-project trust grant; a repo-defined MCP server also
@@ -106,8 +106,7 @@ What ThinkRail does, at product level; the linked spec owns the detail.
   read-only Specs tool renders it as a tree ([[module-spec-graph]], [[submodule-server-spec]]).
 - **Workflows** — bundled workflow skills for project setup, design brainstorming, and shipping a PR
   ([[module-thinkrail-workflow]]).
-- **Providers** — in-app sign-in and API keys through pi's auth, and JetBrains AI through the user's
-  `central` CLI ([[submodule-server-auth]], [[central-integration]]).
+- **Providers** — in-app sign-in and API keys through pi's auth ([[submodule-server-auth]]).
 - **Pi configuration** — the user's own pi config folder, or another one (a personal vs a work setup), plus
   extra environment variables, chosen in Settings and applied to the whole host at the next start; one setup
   per host, not per project ([[submodule-server-environment]]).

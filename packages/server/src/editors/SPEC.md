@@ -31,7 +31,7 @@ worktree in the host's file manager — the workspace row's "Open in" menu.
   handles that case itself: open/focus the clicked workspace's embedded terminal and run `vim .` there
   (see `apps/web/src/panels/SPEC.md`), never calling into this module for it.
 - **`Bun.which(bin)` alone reads the PATH snapshotted at process start, not the live `process.env.PATH`**
-  (the same trap `shared`'s jbcentral notes) — `resolveShellEnv()` re-resolves PATH at host boot, so every
+  `resolveShellEnv()` re-resolves PATH at host boot, so every
   lookup here passes `{ PATH: process.env.PATH }` explicitly (`defaultWhich`), or the fixed-up PATH would
   never be seen and an installed-but-not-on-the-snapshotted-PATH editor would wrongly read as absent.
 - **`WhichFn`/`SpawnFn` are injectable seams**, not mocks of `Bun.which`/`Bun.spawn`:

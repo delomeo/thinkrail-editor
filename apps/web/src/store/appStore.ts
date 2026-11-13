@@ -411,7 +411,6 @@ export const SettingsSection = {
 	Review: "review",
 	Notifications: "notifications",
 	Privacy: "privacy",
-	Feedback: "feedback",
 	Extensions: "extensions",
 	Environment: "environment",
 } as const;
@@ -1051,7 +1050,6 @@ interface AppState {
 	unheldLoginFrame: LoginPush | null;
 	settingsOpen: boolean;
 	settingsSection: SettingsSection;
-	interviewPromptOpen: boolean;
 	notificationPromptOpen: boolean;
 	sessionSwitcherOpen: boolean;
 	theme: ThemeId;
@@ -1063,8 +1061,6 @@ interface AppState {
 	subagentsEnabled: boolean;
 	subagentMaxConcurrent: number;
 	settleIdleDays: number | null;
-	jbcentralQuotaEnabled: boolean;
-	jbcentralQuotaRefreshSeconds: number;
 	terminalReplayKb: number;
 	terminalWindowsShell: TerminalWindowsShell;
 	composerGrowthLimit: ComposerGrowthLimit;
@@ -1371,8 +1367,6 @@ interface AppState {
 	openSettings: (section?: SettingsSection) => void;
 	closeSettings: () => void;
 	setSettingsSection: (section: SettingsSection) => void;
-	showInterviewPrompt: () => void;
-	hideInterviewPrompt: () => void;
 	openNotificationPrompt: () => void;
 	closeNotificationPrompt: () => void;
 	openSessionSwitcher: () => void;
@@ -1435,9 +1429,6 @@ function configPatch(config: AppConfig) {
 		settleIdleDays: isSettleIdleDays(config.settleIdleDays)
 			? config.settleIdleDays
 			: DEFAULT_CONFIG.settleIdleDays,
-		jbcentralQuotaEnabled: config.jbcentralQuotaEnabled ?? DEFAULT_CONFIG.jbcentralQuotaEnabled,
-		jbcentralQuotaRefreshSeconds:
-			config.jbcentralQuotaRefreshSeconds ?? DEFAULT_CONFIG.jbcentralQuotaRefreshSeconds,
 		terminalReplayKb: config.terminalReplayKb,
 		terminalWindowsShell: isTerminalWindowsShell(config.terminalWindowsShell)
 			? config.terminalWindowsShell
@@ -2318,7 +2309,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 	unheldLoginFrame: null,
 	settingsOpen: false,
 	settingsSection: SettingsSection.Providers,
-	interviewPromptOpen: false,
 	notificationPromptOpen: false,
 	sessionSwitcherOpen: false,
 	theme: DEFAULT_CONFIG.theme,
@@ -2330,8 +2320,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 	subagentsEnabled: DEFAULT_CONFIG.subagentsEnabled,
 	subagentMaxConcurrent: DEFAULT_CONFIG.subagentMaxConcurrent,
 	settleIdleDays: DEFAULT_CONFIG.settleIdleDays,
-	jbcentralQuotaEnabled: DEFAULT_CONFIG.jbcentralQuotaEnabled,
-	jbcentralQuotaRefreshSeconds: DEFAULT_CONFIG.jbcentralQuotaRefreshSeconds,
 	terminalReplayKb: DEFAULT_CONFIG.terminalReplayKb,
 	terminalWindowsShell: DEFAULT_CONFIG.terminalWindowsShell,
 	composerGrowthLimit: DEFAULT_CONFIG.composerGrowthLimit,
@@ -4376,14 +4364,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 	closeSessionSwitcher: () => set({ sessionSwitcherOpen: false }),
 	toggleSessionSwitcher: () =>
 		set((state) => ({ sessionSwitcherOpen: !state.sessionSwitcherOpen })),
-	showInterviewPrompt: () =>
-		set((state) => (state.interviewPromptOpen ? state : { interviewPromptOpen: true })),
-	hideInterviewPrompt: () => set({ interviewPromptOpen: false }),
 	setChatMessageOrder: (chatMessageOrder) => set({ chatMessageOrder }),
 	setStreamingResponseMovement: (streamingResponseMovement) => set({ streamingResponseMovement }),
 	setChatPreferences: (chatMessageOrder, streamingResponseMovement) =>
 		set({ chatMessageOrder, streamingResponseMovement }),
-	applyConfig: (config) => set(configPatch(config)),
+	applyConfig: (config) => {
+		const patch = configPatch(config);
+		set(patch);
+	},
 	requestToolView: (workspaceId, tool) =>
 		set((state) =>
 			state.removedWorkspaceIds[workspaceId]

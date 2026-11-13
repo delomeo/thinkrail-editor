@@ -26,7 +26,6 @@ const NON_REPLAYABLE_CHANNELS: ReadonlySet<string> = new Set([
 	WS_CHANNELS.sessionResourcesChanged,
 	WS_CHANNELS.mcpStatus,
 	WS_CHANNELS.providerChanged,
-	WS_CHANNELS.feedbackInterview,
 ]);
 
 let clientId: string | undefined;

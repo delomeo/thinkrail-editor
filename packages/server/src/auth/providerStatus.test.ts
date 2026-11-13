@@ -1,18 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { JbcentralInstall } from "@thinkrail/contracts";
 import { buildProviderReport, type ProviderStatusSources } from "./providerStatus";
-
-const INSTALL: JbcentralInstall = {
-	platform: "linux",
-	shell: "bash",
-	command: "curl -fsSL https://example/install.sh | bash",
-};
 
 function sources(overrides: Partial<ProviderStatusSources> = {}): ProviderStatusSources {
 	return {
 		modelProviderIds: new Set(),
 		availableProviders: new Set(),
-		centralProviders: new Set(),
 		credentialProviders: [],
 		oauthProviders: [],
 		credentialType: () => undefined,
@@ -20,24 +12,13 @@ function sources(overrides: Partial<ProviderStatusSources> = {}): ProviderStatus
 		apiKeyLogin: () => true,
 		displayName: (id) => id,
 		hasAuth: () => false,
-		jbcentral: { state: "absent" },
-		jbcentralInstall: INSTALL,
 		...overrides,
 	};
 }
 
 describe("buildProviderReport", () => {
-	test("empty runtime carries the closed Central state and install plan", () => {
-		expect(buildProviderReport(sources())).toEqual({
-			providers: [],
-			jbcentral: { state: "absent" },
-			jbcentralInstall: INSTALL,
-		});
-	});
-
-	test("Central lifecycle flows through without model or endpoint inference", () => {
-		const jbcentral = { state: "configuring" as const, action: "connect" as const };
-		expect(buildProviderReport(sources({ jbcentral })).jbcentral).toEqual(jbcentral);
+	test("an empty runtime carries no providers", () => {
+		expect(buildProviderReport(sources())).toEqual({ providers: [] });
 	});
 
 	test("stored credentials map to oauth/api-key kinds and remain removable", () => {
@@ -59,12 +40,11 @@ describe("buildProviderReport", () => {
 		]);
 	});
 
-	test("Central attribution overrides provider auth detail without changing ordinary rows", () => {
+	test("ambient auth describes its source without changing ordinary rows", () => {
 		const report = buildProviderReport(
 			sources({
 				modelProviderIds: new Set(["anthropic", "fallback"]),
 				availableProviders: new Set(["anthropic", "fallback"]),
-				centralProviders: new Set(["anthropic"]),
 				credentialProviders: ["fallback"],
 				credentialType: (id) => (id === "fallback" ? "api_key" : undefined),
 				providerAuth: (id) =>
@@ -78,7 +58,8 @@ describe("buildProviderReport", () => {
 				id: "anthropic",
 				name: "anthropic",
 				configured: true,
-				kind: "central",
+				kind: "env",
+				detail: "ANTHROPIC_API_KEY",
 				canApiKey: true,
 			},
 			{
@@ -92,15 +73,14 @@ describe("buildProviderReport", () => {
 		]);
 	});
 
-	test("an unconfigured Central id remains unconfigured", () => {
+	test("an unconfigured id remains unconfigured", () => {
 		const report = buildProviderReport(
 			sources({
-				modelProviderIds: new Set(["central-only"]),
-				centralProviders: new Set(["central-only"]),
+				modelProviderIds: new Set(["quiet-provider"]),
 			}),
 		);
 		expect(report.providers).toEqual([
-			{ id: "central-only", name: "central-only", configured: false, canApiKey: true },
+			{ id: "quiet-provider", name: "quiet-provider", configured: false, canApiKey: true },
 		]);
 	});
 

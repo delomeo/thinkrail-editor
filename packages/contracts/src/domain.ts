@@ -867,7 +867,7 @@ export interface BranchList {
 	defaultBranch: string;
 }
 
-export type ProviderAuthKind = "oauth" | "api-key" | "env" | "central" | "other";
+export type ProviderAuthKind = "oauth" | "api-key" | "env" | "other";
 
 export interface ProviderStatus {
 	id: string;
@@ -894,77 +894,9 @@ export interface DetectedAccount {
 	plan?: string;
 }
 
-export interface JbcentralInstall {
-	platform: string;
-	shell: "bash" | "powershell";
-	command: string;
-}
-
-export type JbcentralAction = "connect" | "disconnect" | "start-proxy" | "update";
-
-export type JbcentralProbeFailureReason =
-	| "launch-failed"
-	| "timed-out"
-	| "output-too-large"
-	| "nonzero-exit";
-
-export type JbcentralActionFailureReason =
-	| "not-installed"
-	| "unsupported-version"
-	| "version-probe-failed"
-	| "central-action-failed"
-	| "artifact-missing"
-	| "artifact-present"
-	| "candidate-failed";
-
-export type JbcentralStatus =
-	| { state: "absent" }
-	| { state: "outdated"; version: string }
-	| { state: "supported"; version: string; signedOut: boolean }
-	| {
-			state: "configured";
-			version: string;
-			signedOut: boolean;
-			proxyStopped: boolean;
-	  }
-	| { state: "malformed-version" }
-	| { state: "probe-failed"; reason: JbcentralProbeFailureReason }
-	| { state: "configuring"; action?: JbcentralAction }
-	| {
-			state: "load-failed";
-			configured: boolean;
-			action?: JbcentralAction;
-			reason: "candidate-failed";
-	  };
-
-export function isJbcentralConnected(status: JbcentralStatus): boolean {
-	return status.state === "configured" && !status.signedOut && !status.proxyStopped;
-}
-
 export interface ProviderStatusReport {
 	providers: ProviderStatus[];
-	jbcentral: JbcentralStatus;
-	jbcentralInstall: JbcentralInstall;
 }
-
-export type JbcentralActionResult =
-	| { outcome: "applied" }
-	| { outcome: "failed"; reason: JbcentralActionFailureReason };
-
-export type JbcentralConnectResult = JbcentralActionResult;
-
-export type JbcentralLoginResult =
-	| { outcome: "launched" }
-	| {
-			outcome: "failed";
-			reason: "not-installed" | "unsupported-version" | "version-probe-failed" | "launch-failed";
-	  };
-
-export type JbcentralQuotaSnapshot =
-	| { state: "hidden" }
-	| { state: "available"; remaining: number; total: number; observedAt: number }
-	| { state: "stale"; remaining: number; total: number; observedAt: number }
-	| { state: "unavailable" };
 
 export type LoginFrame =
 	| { kind: "authUrl"; url: string; instructions?: string }
@@ -1156,8 +1088,6 @@ export interface AppConfig extends ThemePreference {
 	subagentsEnabled: boolean;
 	/** How many subagents one chat may run at once; more spawns queue FIFO. */
 	subagentMaxConcurrent: number;
-	jbcentralQuotaEnabled: boolean;
-	jbcentralQuotaRefreshSeconds: number;
 	/** Which shell new workspace terminals start on Windows; ignored on other platforms. */
 	terminalWindowsShell: TerminalWindowsShell;
 	/** Idle days after which a quiet workspace settles onto its project's shelf; `null` = never. */
@@ -1185,7 +1115,6 @@ export const RECENT_MODELS_LIMIT = 5;
 export type AppConfigUpdate = Partial<
 	Omit<
 		AppConfig,
-		"defaultModel" | "defaultEffort" | "reviewModel" | "reviewEffort" | "recentModels"
 	>
 > & {
 	defaultModel?: WireModel | null;
@@ -1193,8 +1122,6 @@ export type AppConfigUpdate = Partial<
 	reviewModel?: WireModel | null;
 	reviewEffort?: ThinkingLevel | null;
 };
-
-export type InterviewResponse = "book" | "postpone" | "never";
 
 export const TERMINAL_REPLAY_KB = { min: 0, max: 1024, default: 64 } as const;
 
@@ -1298,17 +1225,6 @@ export function isSubagentMaxConcurrent(value: unknown): value is number {
 	);
 }
 
-export const JBCENTRAL_QUOTA_REFRESH_SECONDS = { min: 1, max: 3600, default: 30 } as const;
-
-export function isJbcentralQuotaRefreshSeconds(value: unknown): value is number {
-	return (
-		typeof value === "number" &&
-		Number.isInteger(value) &&
-		value >= JBCENTRAL_QUOTA_REFRESH_SECONDS.min &&
-		value <= JBCENTRAL_QUOTA_REFRESH_SECONDS.max
-	);
-}
-
 export const DEFAULT_CONFIG: AppConfig = {
 	theme: "dark",
 	themeMode: "fixed",
@@ -1329,8 +1245,6 @@ export const DEFAULT_CONFIG: AppConfig = {
 	agentReviewEnabled: false,
 	subagentsEnabled: true,
 	subagentMaxConcurrent: SUBAGENT_MAX_CONCURRENT.default,
-	jbcentralQuotaEnabled: true,
-	jbcentralQuotaRefreshSeconds: JBCENTRAL_QUOTA_REFRESH_SECONDS.default,
 	settleIdleDays: SETTLE_IDLE_DAYS.default,
 	disabledExtensions: [],
 	locale: SYSTEM_LOCALE_PREFERENCE,

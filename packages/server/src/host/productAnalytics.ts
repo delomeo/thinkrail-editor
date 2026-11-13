@@ -1,12 +1,10 @@
 import type {
 	AppConfig,
 	AppConfigUpdate,
-	JbcentralConnectResult,
 	OpenPrResult,
 	ProviderStatusReport,
 	ReviewComment,
 } from "@thinkrail/contracts";
-import { isJbcentralConnected } from "@thinkrail/contracts";
 import { errorCodeOf } from "@thinkrail/shared/codedError";
 import { settledAvailableModels, usePiRuntime } from "../agent";
 import {
@@ -113,19 +111,7 @@ export function failureReason(error: unknown): FailureReason {
 export function providerAvailability(
 	report: ProviderStatusReport,
 ): SetupState["provider_available"] {
-	if (
-		report.providers.some((provider) => provider.configured) ||
-		isJbcentralConnected(report.jbcentral)
-	)
-		return "yes";
-	switch (report.jbcentral.state) {
-		case "probe-failed":
-		case "configuring":
-		case "load-failed":
-			return "unknown";
-		default:
-			return "no";
-	}
+	return report.providers.some((provider) => provider.configured) ? "yes" : "no";
 }
 
 export class SetupObservation {
@@ -235,19 +221,6 @@ export async function observeSetupAction<T>(
 		} catch {}
 	}
 	return result;
-}
-
-export function centralConnectOutcome(
-	result: JbcentralConnectResult,
-): Pick<SetupResult, "outcome" | "reason"> {
-	if (result.outcome === "applied") return { outcome: "succeeded", reason: "none" };
-	return {
-		outcome: "failed",
-		reason:
-			result.reason === "unsupported-version" || result.reason === "not-installed"
-				? "unsupported"
-				: "unknown",
-	};
 }
 
 export function directoryPickOutcome(selected: {

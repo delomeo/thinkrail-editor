@@ -3,19 +3,12 @@ import {
 	RiLogoutBoxLine as LogOut,
 	RiRefreshLine as RefreshCw,
 } from "@remixicon/react";
-import {
-	type AppConfigUpdate,
-	JBCENTRAL_QUOTA_PROTOCOL_VERSION,
-	type ProviderStatus,
-} from "@thinkrail/contracts";
-import { t as translate, useT } from "@thinkrail/locales/react";
+import { type ProviderStatus } from "@thinkrail/contracts";
+import { useT } from "@thinkrail/locales/react";
 import { Button } from "@thinkrail/ui/button";
 import { SkeletonRows } from "@thinkrail/ui/skeleton";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { AUTH_KIND_LABEL } from "@/chat/modelPicker";
-import { toast, useAppStore } from "@/store";
-import { errorText, getTransport } from "@/transport";
-import { JetBrainsAiCard } from "./JetBrainsAiCard";
 import { ProviderRow } from "./ProviderRow";
 import { SettingsGroup, SettingsPageContainer } from "./SettingsGroup";
 import { useProviderAuth } from "./useProviderAuth";
@@ -37,30 +30,6 @@ export function ProvidersSettings() {
 		rowBusy,
 		loginDialog,
 	} = useProviderAuth({ ownsLoginDialog: true });
-	const protocolVersion = useAppStore((s) => s.protocolVersion);
-	const quotaEnabled = useAppStore((s) => s.jbcentralQuotaEnabled);
-	const quotaRefreshSeconds = useAppStore((s) => s.jbcentralQuotaRefreshSeconds);
-
-	const saveQuotaSetting = useCallback(async (config: AppConfigUpdate) => {
-		try {
-			await getTransport().request("settings.update", { config });
-		} catch (error) {
-			toast.error(errorText(error), translate("settings.providers.quotaSaveFailed"));
-			throw error;
-		}
-	}, []);
-
-	const quotaSettings =
-		protocolVersion !== null && protocolVersion >= JBCENTRAL_QUOTA_PROTOCOL_VERSION
-			? {
-					enabled: quotaEnabled,
-					refreshSeconds: quotaRefreshSeconds,
-					onEnabledChange: (enabled: boolean) =>
-						saveQuotaSetting({ jbcentralQuotaEnabled: enabled }),
-					onRefreshSecondsChange: (seconds: number) =>
-						saveQuotaSetting({ jbcentralQuotaRefreshSeconds: seconds }),
-				}
-			: null;
 	const providers = report?.providers ?? [];
 	const configured = providers.filter((p) => p.configured);
 	const unconfigured = providers.filter((p) => !p.configured);
@@ -107,15 +76,6 @@ export function ProvidersSettings() {
 								/>
 							))}
 						</SettingsGroup>
-					) : null}
-
-					{report ? (
-						<JetBrainsAiCard
-							status={report.jbcentral}
-							install={report.jbcentralInstall}
-							onChanged={load}
-							{...(quotaSettings ? { quotaSettings } : {})}
-						/>
 					) : null}
 
 					{subscriptionRows.length > 0 ? (
@@ -198,10 +158,7 @@ function ConnectedRow({
 }) {
 	const t = useT();
 	const label = t(AUTH_KIND_LABEL[provider.kind ?? "other"]);
-	const managedTitle =
-		provider.kind === "central"
-			? t("settings.providers.managedCentral")
-			: t("settings.providers.managedOutside");
+	const managedTitle = t("settings.providers.managedOutside");
 
 	return (
 		<div

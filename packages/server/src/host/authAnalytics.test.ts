@@ -12,10 +12,9 @@ const providers = new Map(builtinProviders().map((provider) => [provider.id, pro
 
 function context(
 	status: AuthStatus = { configured: true, source: "stored" },
-	options: { oauth?: boolean; subscription?: boolean; opaque?: string[] } = {},
+	options: { oauth?: boolean; subscription?: boolean } = {},
 ): AuthMetadataContext {
 	return {
-		opaqueProviderIds: new Set(options.opaque),
 		runtime: {
 			getProviderAuthStatus: () => status,
 			getProvider: (id) => providers.get(id),
@@ -82,28 +81,6 @@ test("mixed cloud and private credential paths stay conservative", () => {
 	).toBe("unknown");
 });
 
-test("opaque provider ownership identifies Central without touching opaque auth or models", () => {
-	let reads = 0;
-	const forbidden = () => {
-		reads++;
-		throw new Error("private opaque details");
-	};
-	const opaque: AuthMetadataContext = {
-		opaqueProviderIds: new Set(["private-central-provider"]),
-		runtime: {
-			getProviderAuthStatus: forbidden,
-			getProvider: forbidden,
-			getRegisteredProviderIds: forbidden,
-			isUsingOAuth: forbidden,
-			isUsingSubscription: forbidden,
-		},
-	};
-	expect(observedAuthMethod("private-central-provider", opaque)).toBe("central");
-	expect(loginAuthMethod("private-central-provider", "oauth", opaque)).toBe("central");
-	expect(reads).toBe(0);
-	expect(observedAuthMethod("direct-provider", opaque)).toBe("unknown");
-});
-
 test("custom replacements of builtin providers cannot inherit the builtin key classification", () => {
 	const custom = context();
 	custom.runtime.getRegisteredProviderIds = () => ["openai", "anthropic"];
@@ -114,12 +91,6 @@ test("custom replacements of builtin providers cannot inherit the builtin key cl
 	expect(observedAuthMethod("anthropic", ambient)).toBe("other");
 });
 
-test("a Central-enabled generation does not label its ordinary providers Central", () => {
-	const mixed = context(undefined, { opaque: ["private-central-provider"] });
-	expect(observedAuthMethod("openai", mixed)).toBe("api_key");
-	expect(observedAuthMethod("private-central-provider", mixed)).toBe("central");
-});
-
 test("login describes the completed flow, not an unrelated overriding credential", () => {
 	const overwritten = context({ configured: true, source: "runtime" });
 	expect(loginAuthMethod("anthropic", "oauth", overwritten)).toBe("subscription");
@@ -128,7 +99,6 @@ test("login describes the completed flow, not an unrelated overriding credential
 	expect(loginAuthMethod("openai", "api-key", context())).toBe("api_key");
 	expect(loginAuthMethod("google-vertex", "api-key", context())).toBe("other");
 	expect(loginAuthMethod("private-provider", "api-key", context())).toBe("other");
-	expect(loginAuthMethod("jbcentral", "central", undefined)).toBe("central");
 	expect(loginAuthMethod("anthropic", "oauth", undefined)).toBe("unknown");
 });
 

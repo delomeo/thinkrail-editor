@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { expect, type Page, test, type WebSocketRoute } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import {
 	ANALYTICS_CONSENT_PROTOCOL_VERSION,
 	type AppConfig,
@@ -283,26 +283,6 @@ for (const enabled of [true, false]) {
 		});
 	});
 }
-
-test("consent takes precedence over an addressed interview invitation", async ({
-	page,
-	baseURL,
-}) => {
-	await seedAnalyticsConsent(baseURL, false, false);
-	let browserSocket: WebSocketRoute | undefined;
-	await page.routeWebSocket(/\/ws(\?|$)/, (socket) => {
-		browserSocket = socket;
-		socket.connectToServer();
-	});
-	await page.goto("/");
-	await expect(page.getByTestId("analytics-consent-dialog")).toBeVisible();
-	if (!browserSocket) throw new Error("Expected the app WebSocket");
-	browserSocket.send(JSON.stringify({ channel: WS_CHANNELS.feedbackInterview, data: {} }));
-	await expect(page.getByTestId("interview-prompt-dialog")).toBeHidden();
-	await page.getByTestId("analytics-consent-confirm").click();
-	await expect(page.getByTestId("analytics-consent-dialog")).toBeHidden();
-	await expect(page.getByTestId("interview-prompt-dialog")).toBeVisible();
-});
 
 test("pre-v65 hosts keep the legacy Privacy switch without a consent dialog or confirmation writes", async ({
 	page,

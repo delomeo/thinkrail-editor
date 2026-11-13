@@ -22,7 +22,6 @@ import {
 	toWireModel,
 } from "../agent";
 import { resetAnalyticsForTests } from "../analytics";
-import { resetJbcentralStateForTests } from "../auth";
 import * as git from "../git";
 import { loadTurns, saveWorkspaces } from "../persistence";
 import { resetConfigCache } from "../settings";
@@ -70,7 +69,6 @@ beforeEach(async () => {
 		},
 	]);
 	resetConfigCache();
-	await resetJbcentralStateForTests();
 	setSessionManagerFactory((cwd) => SessionManager.inMemory(cwd));
 });
 
@@ -82,7 +80,6 @@ afterEach(async () => {
 	setSessionManagerFactory((cwd) => SessionManager.create(cwd));
 	resetAnalyticsForTests();
 	resetConfigCache();
-	await resetJbcentralStateForTests();
 	configurePiRuntimeFactory();
 	configurePiRuntime(null);
 	rmSync(directory, { recursive: true, force: true });

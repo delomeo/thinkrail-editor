@@ -32,9 +32,8 @@ ThinkRail terminal uses the same config folder.
 ## Get right
 
 - **Apply point.** `bootHost` calls `applyHostEnvironment()` after `await resolveShellEnv()` and before
-  `initializeJbcentralRuntime()` / `createServer()` — before the first `getAgentDir()` reader. Applying
-  later would split the process: the model runtime, MCP user-config watcher, history root and Central
-  hold the agent dir they first saw.
+  `createServer()` — before the first `getAgentDir()` reader. Applying later would split the process: the
+  model runtime, MCP user-config watcher, and history root hold the agent dir they first saw.
 - **Precedence: launch env > stored record > login-shell import / locale repair.** Names present before
   the shell repair (`launchEnvKeys()`) are never overwritten, so `FOO=1 thinkrail` and the e2e/smoke
   isolation through `PI_CODING_AGENT_DIR` keep working; the status lists those names as

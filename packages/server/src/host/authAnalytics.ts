@@ -21,7 +21,6 @@ type AuthRuntime = Pick<
 
 export interface AuthMetadataContext {
 	readonly runtime: AuthRuntime;
-	readonly opaqueProviderIds: ReadonlySet<string>;
 }
 
 function isUnmodifiedBuiltin(providerId: string, runtime: AuthRuntime): boolean {
@@ -46,7 +45,6 @@ export function observedAuthMethod(
 ): AnalyticsAuthMethod {
 	if (!context) return "unknown";
 	try {
-		if (context.opaqueProviderIds.has(providerId)) return "central";
 		const { runtime } = context;
 		const status = runtime.getProviderAuthStatus(providerId);
 		if (!status.configured) return "unknown";
@@ -81,10 +79,8 @@ export function loginAuthMethod(
 	method: LoginMethod,
 	context: AuthMetadataContext | undefined,
 ): AnalyticsAuthMethod {
-	if (method === "central") return "central";
 	if (!context) return "unknown";
 	try {
-		if (context.opaqueProviderIds.has(providerId)) return "central";
 		if (method === "oauth") {
 			const oauth = context.runtime.getProvider(providerId)?.auth.oauth;
 			if (!oauth) return "unknown";

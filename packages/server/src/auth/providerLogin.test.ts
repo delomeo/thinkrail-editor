@@ -2,12 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { AuthInteraction, AuthType } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { LoginPush } from "@thinkrail/contracts";
-import {
-	activatePiRuntimeGeneration,
-	configurePiRuntime,
-	getPiRuntimeGeneration,
-	piLoginOptions,
-} from "../agent";
+import { configurePiRuntime, getPiRuntimeGeneration, piLoginOptions } from "../agent";
 import {
 	cancelAllLogins,
 	cancelLogin,
@@ -86,10 +81,7 @@ describe("startLogin", () => {
 		expect(frames).toEqual([]);
 	});
 
-	test.each([
-		"configure",
-		"activate",
-	])("delayed success retains its login generation after %s", async (cutover) => {
+	test("delayed success retains its login generation across a runtime cutover", async () => {
 		const replacement = install(async () => {});
 		const replacementGeneration = await getPiRuntimeGeneration();
 		const completion = Promise.withResolvers<void>();
@@ -103,8 +95,7 @@ describe("startLogin", () => {
 		await tick();
 		expect(h.loginCalls()).toEqual([["anthropic", "oauth"]]);
 
-		if (cutover === "configure") configurePiRuntime(replacementGeneration.runtime);
-		else activatePiRuntimeGeneration(replacementGeneration);
+		configurePiRuntime(replacementGeneration.runtime);
 		const currentGeneration = await getPiRuntimeGeneration();
 		expect(currentGeneration).not.toBe(originalGeneration);
 		expect(currentGeneration.runtime).toBe(replacementGeneration.runtime);

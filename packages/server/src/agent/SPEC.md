@@ -5,7 +5,7 @@ status: active
 title: agent — in-process pi sessions
 parent: module-server
 depends-on: [module-contracts, module-pi-delegation, module-pi-subagents, module-pi-background-commands]
-references: [module-spec-graph, central-integration, submodule-server-extensions]
+references: [module-spec-graph, submodule-server-extensions]
 tags: [pi]
 ---
 
@@ -25,8 +25,7 @@ re-opened transcripts provider-valid.
   - `piRuntime` (the current shared `ModelRuntime` generation — pi's canonical model/auth facade for
     catalogs, credentials, availability, login/logout, and request dispatch). Sibling consumers use the
     `usePiRuntime()` callback to capture the current generation rather than receiving a mutable singleton;
-    host boot initializes it before any model work, while later Central artifact changes prepare and atomically
-    activate a fresh generation. Tests configure the factory before initialization. Every runtime is created
+    host boot initializes it before any model work. Tests configure the factory before initialization. Every runtime is created
     with **ambient network OFF** —
     `allowModelNetwork: false` **plus a scoped `PI_OFFLINE` around construction** (pi 0.81 derives the
     runtime's ambient-network default from that env at construction; the option now gates only the
@@ -66,28 +65,17 @@ re-opened transcripts provider-valid.
     `provider.status` + in-app login — lives in the sibling `auth` module (which consumes the shared
     `usePiRuntime` callback), **not** here.
 
-    Candidate preparation takes only the reviewed opaque Central path set, builds a fresh runtime, applies the
+    A generation is built once per process through the configurable runtime factory: it applies the
     composition root's invariant generation initializer (the source-mode e2e host uses it for its gated fake
-    providers), records that pre-opaque provider-id allowlist for `provider.status` together with each id's
-    display name at that moment, and then applies the opaque
-    extensions once through PI's public headless loader. The generation separately records ids introduced
-    or replaced by that loader (`opaqueProviderIds`) through opaque registration-identity comparison, never
-    configuration values. The allowlist stays the full pre-opaque set: a novel Central id was never in it
-    and so never becomes a row, while a replaced built-in (`anthropic`, `openai`, …) stays visible and
-    auth attributes it to Central by intersecting the two sets. (Subtracting the opaque set from the allowlist
-    — briefly done for analytics attribution — made every Central-routed provider vanish from the Providers
-    section; the two facts must stay separate.) Thus auth never inspects or emits Central's provider
-    configuration, while an add/remove/replace can never drop process-local provider registrations. The
-    initializer must be configured before the first generation and runs for every candidate. The path is the
-    only artifact fact this module receives;
-    it never reads, parses, hashes, snapshots, logs, copies, or serves the file. Initializer/extension/loader/
-    provider failures discard the candidate and collapse to a closed `load-failed` outcome; raw diagnostics
-    never reach `pi.extensionUi`, the wire, logs, analytics, persistence, or snapshots. Auth owns file watching,
-    coalescing, and stale-candidate rejection; agent only prepares and activates a generation.
+    providers) and records the provider-id allowlist `provider.status` reads against, captured at that moment,
+    so a provider an extension registers later never becomes a status row. The initializer must be configured
+    before the first generation. This module never reads, parses, hashes, snapshots, logs, copies, or serves an
+    extension file. Initializer/extension/loader/provider failures reject the generation build; raw diagnostics
+    never reach `pi.extensionUi`, the wire, logs, analytics, persistence, or snapshots.
 
     `getSessionRuntimeGeneration` exposes a live session's retained generation for synchronous host metadata
-    reads. Activation changes the current pointer for pre-session reads and future session creation; it never
-    mutates, drains, or recreates existing sessions. A live session keeps its original runtime generation. A disk session
+    reads. A runtime cutover changes the current pointer for pre-session reads and future session creation; it
+    never mutates, drains, or recreates existing sessions. A live session keeps its original runtime generation. A disk session
     attached after activation keeps its saved model when that model is available in the current runtime.
     If it is unavailable, Pi chooses its settings default, then its ordered provider defaults, then the
     first available model; this need not match ThinkRail's AppConfig default or the saved provider.
@@ -108,23 +96,14 @@ re-opened transcripts provider-valid.
     applying it. The snapshot is what pi's last *settled* pass concluded (written at `create()`, after every
     `refresh()`, and on login/logout), plus a provisional entry pi writes the moment a provider with a stored
     credential or configured key is registered — config and native (`registerNativeProvider`) registrations
-    alike, so a Central or delegation-mirrored provider is readable before its availability pass lands. Being
+    alike, so a delegation-mirrored provider is readable before its availability pass lands. Being
     the one read makes the picker, default, and model resolution agree within a generation.
   - `modelAvailability` — narrows that snapshot to what the **connection** serves; pi's catalogs are
     per-provider, not per-account, so a provider pi calls configured can still 400 on most of its catalog.
-    Two rules, each scoped by `baseUrl` so custom or rerouted models are untouched: **Sign in with ChatGPT**
+    One rule, scoped by `baseUrl` so custom or rerouted models are untouched: **Sign in with ChatGPT**
     (`openai` + OAuth against `api.openai.com/v1`) keeps only ids in pi's own `openai-codex` catalog — the
-    ChatGPT backend rejects the API-only rest (`gpt-4`, `gpt-4o`, `o1`, …) with `model_not_found`; and an
-    **opaque (Central) provider** keeps the ids its proxy advertises on `GET /models` (OpenAI wire) or
-    `GET /v1/models` (Anthropic wire), an alias matching a listed `-YYYYMMDD` / `-YYYY-MM-DD` dated id
-    (the proxy resolves `gpt-4o` to `gpt-4o-2024-11-20`). Listings are read with pi's resolved auth beside
-    `refreshCatalogs` (detached on `model.list`, awaited and forced on `model.refresh`), single-flighted,
-    5s-bounded end to end (one deadline covers credential resolution and the fetch, so a stalled OAuth
-    refresh cannot wedge the single flight), throttled to 60s per runtime, and a change publishes
-    `provider.changed` so the picker re-reads; an unknown wire or a never-read listing filters nothing,
-    and a failed re-read keeps the last listing. Failures log only a closed count, never provider ids or
-    the provider's error text. Direct API keys and other subscriptions keep pi's catalog: no listing was verified to
-    agree with pi's aliases there.
+    ChatGPT backend rejects the API-only rest (`gpt-4`, `gpt-4o`, `o1`, …) with `model_not_found`. Direct API
+    keys and other subscriptions keep pi's catalog.
   - `modelDefaults` — `preferredDefaultModel(available)`: pi's `defaultModelPerProvider` in pi's order,
     then any available model whose id is one of those defaults, else the first available model. Pi does
     not export that map, so the host mirrors it under a parity test against the installed dist; the first
@@ -150,8 +129,7 @@ re-opened transcripts provider-valid.
     signal; a no-op save does neither. Every read also refreshes locally first so external pi CLI edits
     appear. Live sessions keep the model they were created with; new chats resolve the updated metadata.
     pi owns schema validation and the effective value; error messages are generic and never carry file
-    contents. Accepted gap: a Central rebuild whose runtime loaded the file before a save and activated
-    after its refresh serves the old budget until the next read refreshes it.
+    contents.
   - `agentSessionManager` — sessions keyed by `session.sessionId` (each `Entry` also tracks its
     `workspaceId`), `createSession({ cwd, workspaceId, model?, thinkingLevel? })` → `createAgentSession(...)`
     with a per-session `SessionManager` **and `buildSessionSettings(cwd, projectTrusted)`** (the user's
@@ -667,8 +645,8 @@ re-opened transcripts provider-valid.
     the host knows — the delegation root under the data dir (`<dataDir>/delegation`),
     `scope = workspaceId`, and the manager's `liveParentContext` projection (`ParentContext`, core
     decision #23), including the exact `ModelRuntime` retained by that parent session. Existing
-    parents and their children therefore stay on their runtime generation across a Central change,
-    while parents created afterward project the new generation. The host-wide `getPiRuntime` resolver
+    parents and their children therefore stay on their runtime generation, while parents created afterward
+    project the current one. The host-wide `getPiRuntime` resolver
     is passed as the core's dynamic fallback rather than captured at service creation. One
     `DelegationService` per workspace is cached (`delegationServiceFor`, synchronous — nothing awaits
     at bind time). A parented run's spend is appended to the live parent as pi `usage` entries
@@ -826,15 +804,11 @@ re-opened transcripts provider-valid.
     also loads the core's base set (`childBaseExtensionFactories`, same decision): `oversizedImageGuard`,
     since a child's `read` returns raw images under the shared settings (see the `buildSessionSettings`
     bullet), and `skillCarryover`, since children auto-compact under those settings too.
-  - `extensions` — Pi resource wiring. Candidate generation loads the reviewed external Central path once
-    through a headless `DefaultResourceLoader` to apply provider registrations, without inspecting it.
-    `buildResourceLoader(cwd, settingsManager, getAdmission, excludedPaths, extraFactories?)` then resolves
-    Pi's normal settings/package +
-    `.pi` / `.agents` extension set, removes that exact opaque identity **before loading**, and explicitly loads
-    the remaining paths: sessions use the provider objects already owned by their retained generation, so
-    arbitrary Central factory/errors/UI cannot reach `pi.extensionUi`. The Central identity is always excluded
-    from session discovery—even if the global artifact changes—so a session cannot mutate its generation.
-    That explicit path set is **not frozen at construction**: the loader's public `reload()` is wrapped so
+  - `extensions` — Pi resource wiring.
+    `buildResourceLoader(cwd, settingsManager, getAdmission, extraFactories?)` resolves Pi's normal
+    settings/package + `.pi` / `.agents` extension set and appends the host's own inline factories, so a
+    session never re-registers a provider its retained generation already owns: arbitrary extension
+    factory/errors/UI cannot reach `pi.extensionUi`. The resolved path set is **not frozen at construction**: the loader's public `reload()` is wrapped so
     every reload first re-resolves the set through the host's own `DefaultPackageManager` (current settings
     and trust, `builtin:*` entries by name so `-builtin:*` is honoured) and mutates the host-owned array pi
     reads in place, then relabels discovered-path provenance after the load — pi's `extensionsOverride` is
@@ -935,8 +909,8 @@ re-opened transcripts provider-valid.
     is pi's own switch for bundled-but-not-compiled distributions: it selects the embedded-modules extension
     loader (jiti's static entry with Babel bundled in, plus pi's virtual modules). Without it pi treats the
     bundle as a plain Node runtime and reaches for jiti's lazy `../dist/babel.cjs` relative to a file that
-    does not exist inside a single-file bundle, so the Central candidate fails to load (pi 0.86.0 made the
-    loader choice runtime-dependent; 0.84.x always used the static entry). The candidate loader also forces
+    does not exist inside a single-file bundle, so an external extension fails to load (pi 0.86.0 made the
+    loader choice runtime-dependent; 0.84.x always used the static entry). The loader also forces
     jiti's transform (`JITI_TRY_NATIVE=false`, plus `JITI_REBUILD_FS_CACHE=1` so a stale transform cache
     never survives a pi bump): with native import allowed, Bun would resolve an external extension's bare
     `@earendil-works/pi-coding-agent` import itself — auto-installing a second pi copy, since nothing under
@@ -944,8 +918,8 @@ re-opened transcripts provider-valid.
     instance. Together the define and the forced transform are the tested artifact seam (the shared artifact
     probe's synthetic extension value-imports pi and fails closed without them); the `server-runtime.ts`
     filename is only a name.
-    In every mode, the optional Central artifact remains an external filesystem path loaded by PI's public
-    Jiti seam; it is never bundled, staged, or copied into ThinkRail. Both modes append
+    In every mode an external extension stays an external filesystem path loaded by PI's public Jiti seam; it
+    is never bundled, staged, or copied into ThinkRail. Both modes append
     `extensionFactories`: a **headless-search policy** (`headlessSearch.ts`, a `tool_call` hook defaulting
     `web_search`'s `workflow` to `"none"`, since pi-web-access would otherwise open a browser curator on
     the host machine and block on it). It is host-owned and unconditional, never part of the `web-access`
@@ -1043,8 +1017,7 @@ re-opened transcripts provider-valid.
   session-lifecycle debug traces); `persistence` (`dataDir` for delegation plus the narrow session
   receipt stores); `trash` (the recoverable-delete primitive); Node.
 - **Forbidden:** `host`; sibling features other than `log`, `trash` and those narrow persistence surfaces (session
-  worktree `cwd` remains an input, never a workspace-registry lookup); Central process/filesystem knowledge—the
-  caller supplies only the desired opaque extension paths for a candidate.
+  worktree `cwd` remains an input, never a workspace-registry lookup).
 
 ## Tool output and context recovery
 
@@ -1222,8 +1195,8 @@ the `/mcp` command stay pi's; ThinkRail owns what a multi-session GUI host owes 
   and the `Agent` tool's description says subagents cannot call MCP tools.
   Parent chats make pi's `openUrl` a no-op (a remote client must never get a browser opened on the host
   machine); pi's rpc-mode `/mcp login` still shows the URL and the paste-back dialog. In the
-  Central-exclusion loader mode both built-ins go through the per-reload path re-resolution described
-  under `extensions`, so `-builtin:*` applies there too.
+  both built-ins go through the per-reload path re-resolution described under `extensions`, so `-builtin:*`
+  applies there too.
 - **Configuration** ([[submodule-server-agent-mcp]]). pi's `mcp.json` files are the source of truth
   (`~/.pi/agent/mcp.json`, trusted `.pi/mcp.json`). The loader ThinkRail supplies is a port of pi's
   `loadMcpConfig` + validation (parity tests run the same fixtures through pi's installed loader, re-checked
@@ -1464,8 +1437,8 @@ the `/mcp` command stay pi's; ThinkRail owns what a multi-session GUI host owes 
   client re-deriving it. `cost` keeps only the two list prices (pi's `ModelCost` tiers and cache rates stay
   host-side) and `input` the modality list. **`auth`** is the per-provider connection kind projected onto
   each model (`providerAuth.ts` → `catalogProviderAuth`, from pi's synchronous `isUsingOAuth` /
-  `getProviderAuthStatus` plus the generation's opaque Central ids) so the picker can say *plan* / *API key*
-  / *env* / *JetBrains AI* without the `provider.status` refresh; `describeProviderAuth` is the one
+  `getProviderAuthStatus`) so the picker can say *plan* / *API key* / *env* without the `provider.status`
+  refresh; `describeProviderAuth` is the one
   kind/detail mapping and `auth/providerStatus` reuses it, so the picker and Settings → Providers cannot
   disagree. `toWireModel(model, auth?)` takes the projection as a value: the catalog read computes it once
   per provider (`readAvailableWireModels`), the session result, summary and `setSessionModel` paths derive

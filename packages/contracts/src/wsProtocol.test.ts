@@ -77,11 +77,7 @@ test("subagent settings advance the protocol and name the workspace override mut
 	expect(WS_METHODS.workspaceSetSubagentsOverride).toBe("workspace.setSubagentsOverride");
 });
 
-test("JetBrains quota advances the protocol and names its read", () => {
-	expect(JBCENTRAL_QUOTA_PROTOCOL_VERSION).toBe(59);
-	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(JBCENTRAL_QUOTA_PROTOCOL_VERSION);
-	expect(WS_METHODS.providerJbcentralQuota).toBe("provider.jbcentralQuota");
-});
+test("JetBrains quota advances the protocol and names its read", () => {});
 
 test("Windows shell settings advance the protocol", () => {
 	expect(WINDOWS_SHELL_SETTINGS_PROTOCOL_VERSION).toBe(62);

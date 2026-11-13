@@ -4,7 +4,7 @@ type: architecture-design
 status: active
 title: ThinkRail — top-level architecture
 parent: goal-and-requirements
-covers: [client-host-split, cli-entrypoint, wire-contract, transport-endpoint, ui-shell-panels, git-worktrees, remote-tailscale, hydrate-then-stream, domain-vs-view-state, frontend-local-workbench-frame, client-local-navigation, central-integration, portable-pi-packages, thinkrail-extensions]
+covers: [client-host-split, cli-entrypoint, wire-contract, transport-endpoint, ui-shell-panels, git-worktrees, remote-tailscale, hydrate-then-stream, domain-vs-view-state, frontend-local-workbench-frame, client-local-navigation, portable-pi-packages, thinkrail-extensions]
 tags: [architecture]
 ---
 
@@ -249,11 +249,10 @@ dependency. This keeps test process drivers outside both launchers and the serve
     **tmux was rejected** as the persistence layer: an unassumable dependency on Windows, a competing tab
     model, env-propagation breakage, and polling-based capture — for restart survival we have already
     decided not to hold. Detail: [[submodule-server-terminal]].
-13. **Central's cross-module lifecycle has one architectural owner.** Its adapter, runtime generation,
-    wire status/quota, synchronized preferences, provider card, and top-bar readout remain in their bounded
-    modules; the correspondence between those surfaces and their liveness obligations belongs to
-    [[central-integration]]. This keeps feature-specific mechanics in
-    their leaf specs while making a non-terminating composition visible at the architecture layer.
+13. *(retired 2026-11) The JetBrains AI provider chain through the user's `central` CLI left the fork.*
+    Its CLI adapter, runtime-generation rebuild, wire status/quota, synchronized preferences, provider card,
+    and top-bar readout were one cross-module composition, documented by a now-deleted
+    `central-integration` node. The number stays reserved so a future provider chain gets a fresh one.
 
 14. **The public website is one origin and production deployment.** `apps/website` owns `/`, `/blog/`,
     and `/vibecoding/` in one static Astro build deployed with same-project Cloudflare Pages Functions.
@@ -278,9 +277,11 @@ dependency. This keeps test process drivers outside both launchers and the serve
     point at the same mutable data directory, cross-process consistency is intentionally not guaranteed.
     Desktop artifacts are additive; native WebKitGTK on Ubuntu 24.04+/glibc 2.38 is
     the supported Linux floor. The standard framework CLI/configuration owns bundling and installers;
-    a documented pre-build hook prepares ThinkRail's physical resources and PI runtime. Release workflows
-    in `JetBrains/thinkrail-signing` consume the public build recipes and coordinate build → JetBrains
-    service signing → publication for an explicit public source commit. Product code and ordinary CI stay
+    a documented pre-build hook prepares ThinkRail's physical resources and PI runtime. The upstream
+    private `JetBrains/thinkrail-signing` workflows consume the public build recipes and coordinate build → JetBrains
+    service signing → publication for an explicit public source commit; this repository has no access to
+    that pipeline and publishes its own releases through `release:binary` ([[module-repo-scripts]]),
+    unsigned. Product code and ordinary CI stay
     public; credentials and publication stay private. macOS service signing consumes the framework's
     expanded app archive and finalizes the DMG through the documented JetBrains SRE flow, without a local
     Apple credential flow or mutation of Electrobun's compressed wrapper. Exact handoff and release
@@ -293,7 +294,7 @@ dependency. This keeps test process drivers outside both launchers and the serve
     decision #10), create in-process hidden pi sessions, and keep their host bindings optional.
     ThinkRail composes them in `packages/server`: one service per workspace, child transcripts under
     the host data dir, a curated child-extension set, and the exact `ModelRuntime` retained by each
-    parent session so children stay on that parent's provider generation across Central changes. The
+    parent session so children stay on that parent's provider generation. The
     wire mirrors only the UI-facing run details and exposes transcript reads; neither portable package
     depends on ThinkRail. The same core supports independent resource owners with explicit execution
     context and immutable captured-history forks for durable orchestrators; it never fabricates a parent
@@ -463,8 +464,8 @@ dependency. This keeps test process drivers outside both launchers and the serve
 - Background console children launched by the host or CLI set **`windowsHide: true`**. Bounded Windows
   children also remain **non-detached**, so ordinary helpers inherit a nonvisual console rather than
   opening their own; the platform policy and native regression belong to [[submodule-server-subprocess]].
-  This includes PR revalidation on window focus; terminal-busy checks are close actions and Central quota
-  resumes on visibility changes, not ordinary focus. Sync and fire-and-forget cases use
+  This includes PR revalidation on window focus; terminal-busy checks are close actions. Sync and
+  fire-and-forget cases use
   `@thinkrail/shared/spawn`; bespoke bounded runners set the option directly. Exempt: spawns that inherit
   an existing terminal's stdio (the `update`/`uninstall` CLI subcommands, the build script) and shell
   probes that are no-ops on win32 (`shellEnv`).

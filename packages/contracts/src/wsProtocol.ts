@@ -23,11 +23,6 @@ import type {
 	HostEnvironment,
 	HostEnvironmentStatus,
 	HostEnvironmentUpdateResult,
-	InterviewResponse,
-	JbcentralActionResult,
-	JbcentralConnectResult,
-	JbcentralLoginResult,
-	JbcentralQuotaSnapshot,
 	LocalLocalesSnapshot,
 	LoginReply,
 	McpExposure,
@@ -338,17 +333,10 @@ export const WS_METHODS = {
 	providerLoginReply: "provider.loginReply",
 	providerLoginCancel: "provider.loginCancel",
 	providerLogout: "provider.logout",
-	providerJbcentralConnect: "provider.jbcentralConnect",
-	providerJbcentralDisconnect: "provider.jbcentralDisconnect",
-	providerJbcentralStartProxy: "provider.jbcentralStartProxy",
-	providerJbcentralLogin: "provider.jbcentralLogin",
-	providerJbcentralUpdate: "provider.jbcentralUpdate",
-	providerJbcentralQuota: "provider.jbcentralQuota",
 	hostUpdate: "host.update",
 	settingsUpdate: "settings.update",
 	environmentGet: "environment.get",
 	environmentUpdate: "environment.update",
-	feedbackRespond: "feedback.respond",
 	clientReportError: "client.reportError",
 	historySearch: "history.search",
 	reviewGet: "review.get",
@@ -401,7 +389,6 @@ export const WS_CHANNELS = {
 	workspaceFsChanged: "workspace.fsChanged",
 	settingsChanged: "settings.changed",
 	hostUpdateAvailable: "host.updateAvailable",
-	feedbackInterview: "feedback.interview",
 	reviewChanged: "review.changed",
 	reviewFailed: "review.failed",
 	turnChanged: "turn.changed",
@@ -968,12 +955,6 @@ export interface WsMethodMap {
 	"provider.loginReply": { params: LoginReply; result: Ack };
 	"provider.loginCancel": { params: { loginId: string }; result: Ack };
 	"provider.logout": { params: { providerId: string }; result: Ack };
-	"provider.jbcentralConnect": { params: Record<string, never>; result: JbcentralConnectResult };
-	"provider.jbcentralDisconnect": { params: Record<string, never>; result: JbcentralActionResult };
-	"provider.jbcentralStartProxy": { params: Record<string, never>; result: JbcentralActionResult };
-	"provider.jbcentralLogin": { params: Record<string, never>; result: JbcentralLoginResult };
-	"provider.jbcentralUpdate": { params: Record<string, never>; result: JbcentralActionResult };
-	"provider.jbcentralQuota": { params: { force?: boolean }; result: JbcentralQuotaSnapshot };
 	"host.update": { params: Record<string, never>; result: Ack };
 	"settings.update": { params: { config: AppConfigUpdate }; result: AppConfig };
 	"environment.get": { params: Record<string, never>; result: HostEnvironmentStatus };
@@ -981,7 +962,6 @@ export interface WsMethodMap {
 		params: { environment: HostEnvironment };
 		result: HostEnvironmentUpdateResult;
 	};
-	"feedback.respond": { params: { action: InterviewResponse }; result: Ack };
 	"client.reportError": { params: ClientErrorReport; result: Ack };
 	"history.search": {
 		params: { query: string; scope: HistoryScope; limit?: number };

@@ -53,7 +53,6 @@ export {
 	setMcpLoginPublisher,
 	startMcpProbe,
 } from "./mcpSignIn";
-export { setModelListingPublisher } from "./modelAvailability";
 export {
 	listModelContextSettings,
 	setModelContextPublisher,
@@ -62,17 +61,13 @@ export {
 export { preferredDefaultModel } from "./modelDefaults";
 export * from "./oneshot";
 export {
-	activatePiRuntimeGeneration,
 	configurePiRuntime,
 	configurePiRuntimeFactory,
 	configurePiRuntimeGenerationInitializer,
-	configurePiRuntimeSessionExtensionExclusions,
 	getPiRuntimeGeneration,
 	type PiRuntimeGeneration,
 	type PiRuntimeGenerationInitializer,
-	type PreparePiRuntimeGenerationResult,
 	piLoginOptions,
-	preparePiRuntimeGeneration,
 	settledAvailableModels,
 } from "./piRuntime";
 export { piTrustsProjectPath, projectTrustSummary } from "./projectTrust";

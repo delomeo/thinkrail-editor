@@ -17,13 +17,7 @@ import {
 	toWireModel,
 	usePiRuntime,
 } from "./agentSessionManager";
-import { refreshModelListings } from "./modelAvailability";
-import {
-	activatePiRuntimeGeneration,
-	configurePiRuntime,
-	configurePiRuntimeFactory,
-	preparePiRuntimeGeneration,
-} from "./piRuntime";
+import { configurePiRuntime, configurePiRuntimeFactory } from "./piRuntime";
 
 function modelDef(id: string) {
 	return {
@@ -125,10 +119,7 @@ async function liveSession() {
 }
 
 async function activateRuntime(runtime: ModelRuntime): Promise<void> {
-	configurePiRuntimeFactory(async () => runtime);
-	const prepared = await preparePiRuntimeGeneration([]);
-	if (prepared.outcome !== "prepared") throw new Error("candidate was not prepared");
-	activatePiRuntimeGeneration(prepared.generation);
+	configurePiRuntime(runtime);
 }
 
 async function reopenAfterTeardown(sessionId: string, workspaceId: string, sessionCwd: string) {
@@ -243,49 +234,6 @@ describe("PI runtime generations", () => {
 		});
 	});
 
-	test("a disk reattach replaces a persisted model the account no longer serves", async () => {
-		const listed = createFauxCore({
-			provider: "listed-faux",
-			api: "openai-responses",
-			models: [modelDef("dropped-model"), modelDef("kept-model")],
-			tokensPerSecond: 2_000,
-		});
-		const proxy = Bun.serve({
-			port: 0,
-			fetch: () => Response.json({ data: [{ id: "kept-model" }] }),
-		});
-		try {
-			const runtime = await runtimeWithFaux(false);
-			runtime.registerProvider("listed-faux", {
-				api: "openai-responses",
-				baseUrl: `http://127.0.0.1:${proxy.port}/v1`,
-				apiKey: "faux",
-				streamSimple: listed.streamSimple,
-				models: ["dropped-model", "kept-model"].map((id) => ({
-					...modelDef(id),
-					api: "openai-responses",
-				})),
-			});
-			configurePiRuntime(runtime);
-			setSessionManagerFactory((sessionCwd) => SessionManager.create(sessionCwd));
-			listed.setResponses([fauxAssistantMessage("BEFORE_LISTING")]);
-			const session = await createSession({
-				cwd,
-				workspaceId: "workspace-generation",
-				model: toWireModel(listed.getModel()),
-			});
-			await promptSession(session.sessionId, "persist this turn");
-			disposeAllSessions();
-
-			expect(await refreshModelListings(runtime, new Set(["listed-faux"]))).toBe(true);
-
-			const reopened = await reopenAfterTeardown(session.sessionId, "workspace-generation", cwd);
-			expect(reopened.summary.model).toMatchObject({ provider: "listed-faux", id: "kept-model" });
-		} finally {
-			proxy.stop(true);
-		}
-	});
-
 	test("a disk transcript stays readable when no model is available", async () => {
 		setSessionManagerFactory((sessionCwd) => SessionManager.create(sessionCwd));
 		const session = await liveSession();
@@ -362,18 +310,5 @@ describe("PI runtime generations", () => {
 			provider: "generation-faux",
 			id: "generation-model",
 		});
-	});
-
-	test("candidate construction failure leaves the current generation unchanged", async () => {
-		const current = await usePiRuntime((runtime) => runtime);
-		configurePiRuntimeFactory(async () => {
-			throw new Error("synthetic loader diagnostic must not escape");
-		});
-
-		expect(await preparePiRuntimeGeneration([])).toEqual({
-			outcome: "failed",
-			reason: "candidate-failed",
-		});
-		expect(await usePiRuntime((runtime) => runtime === current)).toBe(true);
 	});
 });

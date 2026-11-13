@@ -64,21 +64,13 @@ import {
 	reportError,
 	shutdownAnalytics,
 	startAttributionClaim,
-	track,
 } from "../analytics";
-import {
-	cancelAllLogins,
-	initializeJbcentralRuntime,
-	setJbcentralAppliedPublisher,
-	setJbcentralChangedPublisher,
-	setLoginPublisher,
-	setLogoutPublisher,
-	stopJbcentralRuntime,
-} from "../auth";
+import { cancelAllLogins, setLoginPublisher, setLogoutPublisher } from "../auth";
 import { forgetOpenBranchReview } from "../branch-review";
-import { redeliverInterview, releaseInterview, setFeedbackPublisher } from "../feedback";
 import { watchLocalLocales } from "../locales";
 import { logger, observeLoggedErrors } from "../log";
+import {
+	resolveServerCommand,
 import { loadWorkspaces } from "../persistence";
 import {
 	getProjects,
@@ -222,7 +214,6 @@ function sameHostUpdateRelease(
 }
 
 export async function createServer(options: CreateServerOptions = {}): Promise<RunningServer> {
-	await initializeJbcentralRuntime();
 	getConfig();
 	setPiTrustSeed(piTrustsProjectPath);
 	const {
@@ -283,7 +274,6 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 					return;
 				}
 				clearTerminalClient(clientKey);
-				releaseInterview(clientKey);
 				cancelMcpProbesOwnedBy(clientKey);
 			}, CLIENT_REPLAY_RETENTION_MS),
 		);
@@ -380,9 +370,13 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 					terminalBackpressured.add(ws.data.clientKey);
 				}
 				resumeClientTerminals(ws.data.clientKey);
-				redeliverInterview(ws.data.clientKey);
 			},
 			async message(ws, message) {
+				if (ws.data.languageId !== undefined) {
+					return;
+				}
+					return;
+				}
 				const raw = typeof message === "string" ? message : message.toString();
 				let req: unknown;
 				try {
@@ -561,17 +555,6 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 			terminalBackpressured.add(clientKey);
 			ws.close();
 			return "unavailable";
-		}
-	});
-
-	setFeedbackPublisher((clientKey) => {
-		const ws = sockets.get(clientKey);
-		if (!ws || ws.data.protocolVersion < FEEDBACK_INTERVIEW_PROTOCOL_VERSION) return false;
-		try {
-			return ws.send(JSON.stringify({ channel: WS_CHANNELS.feedbackInterview, data: {} })) !== 0;
-		} catch {
-			ws.close();
-			return false;
 		}
 	});
 
@@ -854,16 +837,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 		if (push.frame.kind === "success" && !push.target) publishProviderChanged();
 		trackLoginOutcome(push, generation);
 	});
-	setJbcentralAppliedPublisher(() => {
-		track({
-			name: "provider_login",
-			params: { provider: "jbcentral", method: "central", auth_method: "central" },
-		});
-	});
-	setJbcentralChangedPublisher(publishProviderChanged);
 	setLogoutPublisher(publishProviderChanged);
 	setModelContextPublisher(publishProviderChanged);
-	setModelListingPublisher(publishProviderChanged);
 
 	const initialConfig = getConfig();
 	initializeAnalytics({
@@ -899,7 +874,6 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 		stopHostUpdateChecks();
 		cancelAllLogins();
 		cancelAllMcpProbes();
-		stopJbcentralRuntime();
 		stopAllWatches();
 		stopUserMcpWatch();
 		stopLocalesWatch();
@@ -913,12 +887,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 		requestReplays.clear();
 		persistTerminalSessions();
 		closeAllTerminals();
-		setFeedbackPublisher(null);
 		setSettingsPublisher(null);
 		setModelContextPublisher(null);
-		setModelListingPublisher(null);
-		setJbcentralAppliedPublisher(() => {});
-		setJbcentralChangedPublisher(() => {});
 		setLogoutPublisher(() => {});
 		server.stop(true);
 	};

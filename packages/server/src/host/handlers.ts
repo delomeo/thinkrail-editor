@@ -86,25 +86,27 @@ import {
 import { suggestPrDescription } from "../assist";
 import {
 	cancelLogin,
-	connectJbcentral,
 	detectAccounts,
-	disconnectJbcentral,
-	getJbcentralQuota,
 	getProviderStatus,
-	jbcentralLogin,
 	logoutProvider,
 	resolveLogin,
 	startLogin,
-	startProxyJbcentral,
-	updateJbcentral,
 } from "../auth";
 import { findBranchReviewOutcome, providerFromRemoteUrl } from "../branch-review";
-import { forgetWorkspaceChanges, revertChange, undoChange } from "../changes";
+import {
+	createWorkspaceFile,
+	createWorkspaceFolder,
+	deleteWorkspacePath,
+	forgetWorkspaceChanges,
+	renameWorkspacePath,
+	revertChange,
+	undoChange,
+	writeWorkspaceFile,
+} from "../changes";
 import { selectDirectory } from "../dialog";
 import { listAvailableEditors, openEditor, revealInFileManager } from "../editors";
 import { hostEnvironmentStatus, updateHostEnvironment } from "../environment";
 import { listExtensionCatalog } from "../extensions";
-import { recordAcceptedMessage, respondToInterview } from "../feedback";
 import { readDir, readFile } from "../fs";
 import {
 	commitsAheadOf,
@@ -257,7 +259,6 @@ import {
 	captureReviewCommentAdded,
 	captureReviewCommentResolved,
 	captureReviewCommentsSent,
-	centralConnectOutcome,
 	directoryPickOutcome,
 	observePrAction,
 	observeSetupAction,
@@ -319,7 +320,6 @@ async function sendUserMessage(
 			name: "message_sent",
 			params: { mode, provider: provider.provider, auth_method: provider.auth_method },
 		});
-		recordAcceptedMessage(clientKey);
 	}
 	return { ok: true };
 }
@@ -1265,20 +1265,6 @@ const handlers: WsHandlers = {
 		await logoutProvider(params.providerId);
 		return { ok: true } as const;
 	},
-	"provider.jbcentralConnect": () =>
-		observeSetupAction("provider_connect", connectJbcentral, centralConnectOutcome),
-	"provider.jbcentralDisconnect": () => disconnectJbcentral(),
-	"provider.jbcentralStartProxy": () => startProxyJbcentral(),
-	"provider.jbcentralLogin": () => jbcentralLogin(),
-	"provider.jbcentralUpdate": () => updateJbcentral(),
-	"provider.jbcentralQuota": (params) => {
-		const config = getConfig();
-		if (!config.jbcentralQuotaEnabled) return { state: "hidden" } as const;
-		return getJbcentralQuota({
-			maxAgeMs: config.jbcentralQuotaRefreshSeconds * 1_000,
-			force: params.force === true,
-		});
-	},
 	"host.update": (_params, ctx) => {
 		if (!ctx.runHostUpdate) throw new Error("Host update is unavailable.");
 		ctx.runHostUpdate();
@@ -1290,10 +1276,6 @@ const handlers: WsHandlers = {
 	},
 	"environment.get": () => hostEnvironmentStatus(),
 	"environment.update": (params) => updateHostEnvironment(params.environment),
-	"feedback.respond": (params) => {
-		respondToInterview(params.action);
-		return { ok: true } as const;
-	},
 	"client.reportError": (params) => {
 		reportClientError(typeof params === "object" && params !== null ? params : {});
 		return { ok: true } as const;

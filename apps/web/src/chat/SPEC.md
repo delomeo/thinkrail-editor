@@ -876,8 +876,7 @@ both message orders. *Rejected:* keeping the modal for non-MCP extensions — ev
   level the highlighted model supports (`opus high`) pre-selects it — pi's `model:level` idiom typed
   with a space — and `/model [query]` in the composer opens the picker prefilled instead of sending
   text. The second row line **says what the user actually pays** (`kindLabel` / `costLabel`): the
-  connection glyph — **key** = API key, **∞** = subscription, **{ }** = environment key, a **JCP** tag =
-  JetBrains AI (Central proxy) — then the plan/variable/key word and, only where the provider bills per
+  connection glyph — **key** = API key, **∞** = subscription, **{ }** = environment key — then the plan/variable/key word and, only where the provider bills per
   token (`auth.kind` api-key / env), `$in / $out per M`; group headers add the provider's connection
   detail. The **vendor glyph** (`ProviderGlyph`) is a monochrome `currentColor` mark from
   `generated/providerGlyphs.ts`, which `scripts/generate-provider-glyphs.ts` extracts at build time from

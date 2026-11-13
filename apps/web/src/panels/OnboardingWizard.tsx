@@ -19,7 +19,7 @@ import { selectAnalyticsConsentPromptOpen, useAppStore } from "@/store";
 import { getTransport } from "@/transport";
 import { AnalyticsConsentChoice } from "./AnalyticsPreferences";
 import { ConnectedLine, type ConnectedSummary } from "./ConnectedLine";
-import { ConnectProviderOptions, connectedProviderName } from "./ConnectProviderOptions";
+import { ConnectProviderOptions } from "./ConnectProviderOptions";
 import { detectAccounts } from "./detectAccounts";
 import { useConsentDraft } from "./useAnalyticsConsent";
 import { cancelUnownedLogin, type ProviderAuth, useProviderAuth } from "./useProviderAuth";
@@ -286,7 +286,7 @@ function VerifyConnection({
 	const t = useT();
 	const [empty, setEmpty] = useState(false);
 	const [attempt, setAttempt] = useState(0);
-	const name = connectedProviderName(provider, t);
+	const name = provider.name;
 	const verified = useEffectEvent(onVerified);
 
 	useEffect(() => {

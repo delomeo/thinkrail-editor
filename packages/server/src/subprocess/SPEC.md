@@ -50,9 +50,6 @@ never what a particular child's output means.
   stalled/stderr text and `branch-review`'s degrade-to-`null` are the callers' business.
 - **Known non-consumers.** Two callers spawn something that can outlast a human's patience and still do
   it themselves, each deliberately and each a standing debt rather than a settled design:
-  - `@thinkrail/shared/jbcentral` — already deadline-first, and a different contract (bounded-byte reads, a
-    closed outcome vocabulary, an injectable `run` seam, Central's confidentiality rules). Folding it in
-    would grow this surface for one caller in another package.
   - `dialog`'s `selectDirectory` (`dialog.ts`) — still the EOF-gated shape this module replaces, around
     `zenity`/`kdialog`/`osascript`, whose forked helpers inherit stdio. Unmigrated because a picker's real
     budget is a human at a dialog: wiring its lifetime to the runner's cancellation seam is still deferred.

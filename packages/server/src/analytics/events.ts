@@ -3,14 +3,8 @@ import type { AcquisitionRecord, AttributionTouch } from "../persistence";
 
 export type BuildKind = "source" | "binary" | "desktop";
 
-export type LoginMethod = "oauth" | "api-key" | "central";
-export type AnalyticsAuthMethod =
-	| "api_key"
-	| "subscription"
-	| "oauth"
-	| "central"
-	| "other"
-	| "unknown";
+export type LoginMethod = "oauth" | "api-key";
+export type AnalyticsAuthMethod = "api_key" | "subscription" | "oauth" | "other" | "unknown";
 
 export interface ProviderAnalyticsProperties {
 	provider: string;

@@ -5,7 +5,7 @@ status: active
 title: auth — provider status + in-app login
 parent: module-server
 depends-on: [module-contracts, module-shared]
-references: [submodule-server-agent, central-integration]
+references: [submodule-server-agent]
 tags: [auth, pi]
 ---
 
@@ -25,31 +25,10 @@ ourselves and never surface a credential value over the wire.
     other) + display name + the in-app-login capability flags **`canOAuth`/`canApiKey`**,
     configured-first. It **revalidates on every read through `agent`'s current runtime facade**: local
     config/auth availability refreshes with network disabled, so an external PI login becomes visible.
-    Central is not inferred from model URLs: status combines `shared/jbcentral`'s executable/version/artifact
-    postconditions and closed auth/proxy observations with the synchronizer's latest desired/applied generation.
-    Watcher drift schedules a rebuild; status is `configuring` until the newest candidate applies and
-    `load-failed` when it cannot apply. The cross-module bounded-exit obligation and the drain's known
-    starvation risk are owned by [[central-integration]] (Invariants).
-
-    **The auth/proxy observation is cached, refreshed off the read path, and never polled.** A settled
-    `supported` reading serves the cached result immediately and, past `JBCENTRAL_STATUS_TTL_MS`, starts one
-    background `central status` probe; when either verdict changes it publishes the ordinary provider
-    invalidation, so an open card converges without any client timer. Only positively observed negatives set
-    wire flags: `signed-out` sets `signedOut`, while a stopped proxy sets `proxyStopped` only on configured
-    status; unknown never does. A refused `central add pi`, a launched `central login`, and a Start proxy
-    attempt drop the shared cache because each can make the observation stale. An out-of-band change inside
-    the TTL window is deliberately served stale until the next read past it. The probe never runs mid-action
-    or while a rebuild is outstanding, so it cannot delay a Connect or a candidate cutover.
     Assembly is a pure `buildProviderReport(sources)` over a narrow sources slice, unit-tested with
     fixture data; the kind/detail mapping itself is `agent`'s `describeProviderAuth`, shared with the
-    catalog's per-model `WireModel.auth` projection so a provider row and a picker row never disagree. Its runtime reads are restricted to the generation's provider-id allowlist captured before
-    the opaque Central extension loads (after invariant host registrations): providers Central *introduces*
-    never become rows or cross the wire. A built-in Central *replaces* (`anthropic`, `openai`, `google-vertex`
-    in the real artifact) stays a row — the user must be able to see which providers reach them through
-    JetBrains AI — and is reported as `kind: "central"` with no `detail`, decided purely by the id's membership
-    in the generation's `opaqueProviderIds`; its `name` is the generation's pre-extension display name (pi
-    composes `extension.name ?? base.name`, so a live read would hand an artifact-chosen string to the client),
-    while `configured` and `canLogout` follow the ordinary reads and Central's `baseUrl`/`apiKey` are never read.
+    catalog's per-model `WireModel.auth` projection so a provider row and a picker row never disagree. Its runtime reads are restricted to the generation's provider-id allowlist captured when the generation
+    is created, so a provider an extension registers later never becomes a row and never crosses the wire.
     - **OAuth-capable ids are first-class rows.** The id universe unions model-catalog providers,
       stored-credential providers (`listCredentials()`), **and** providers whose `Provider.auth.oauth`
       is present — an OAuth id can differ from any model-provider id (`openai-codex` ≠ `openai`), and a
@@ -62,9 +41,7 @@ ourselves and never surface a credential value over the wire.
       hand-maintained exclusion sets are gone; `openai-codex` reports `false` because pi's provider has
       no key auth, not because we said so). `canLogout` = the id has a stored
       **auth.json** credential (`credentialProviders`) — the only auth the host can remove; env / models.json-
-      keyed auth report `false` (Sign-out would no-op, so the strip hides it). Central's own lifecycle is only
-      the dedicated closed `jbcentral` status, never a row; the `central` kind on a replaced built-in is an
-      identity fact, never inferred from model URLs or configuration.
+      keyed auth report `false` (Sign-out would no-op, so the strip hides it).
   - `detectAccounts` — `provider.detect`'s onboarding hint: which **other local tools** are already signed in
     to a subscription a pi provider can sign in with, plus a plan label when the tool records one. Sources and
     their signed-in predicates (each verified against the tool's own code; relocation env vars honoured):
@@ -129,59 +106,12 @@ ourselves and never surface a credential value over the wire.
     - `setLoginPublisher(fn)` — the push seam (defaults to a no-op). Successful completion also supplies
       the generation that performed the login as separate host-only context; it is never part of `LoginPush`
       or serialized onto the wire.
-  - `jbcentral` — the in-app **JetBrains AI** native flow. It composes `shared/jbcentral`'s host-local adapter
-    and artifact watcher with `agent`'s candidate-generation seam; it never reaches manager internals. Host boot
-    starts the watcher and requests one initial generation before model work. A reviewed configured artifact is
-    passed as an opaque extension path; absent or unsupported configuration produces a plain runtime. If the
-    Central candidate fails at initial boot, auth records `load-failed` and asks agent for a plain runtime so
-    the UI and unrelated providers remain usable; failure of that plain runtime still fails startup.
-
-    Connect performs the minimum-version preflight, runs `central add pi`, validates artifact existence, and
-    awaits the same rebuild path the watcher uses. Disconnect runs `central remove pi` and validates absence
-    when the artifact exists; an already-absent artifact is the complete postcondition and rebuilds plain PI
-    directly even if Central itself is now absent/unsupported (so Retry can repair a failed plain candidate).
-    Login launches `central login` after the version preflight and drops the cached status
-    observation, since the user is about to change it out of band; the launch is only reported as successful once
-    the child has survived its grace period, so a login that cannot start surfaces as a failure with the host command as
-    the fallback rather than as an invitation to finish in a browser that never opened.
-    Update invokes `central update --install` and rechecks status. Start proxy invokes
-    `central proxy start --ensure-updated`, invalidates the shared status observation, and validates that a
-    fresh probe no longer positively reports stopped; it does not rebuild or reattach a PI runtime. Every
-    action uses the resolved absolute executable. No action edits prior model configuration, preflights live
-    chat models, compensates, or rolls back Central's global state.
-
-    `getJbcentralQuota({ maxAgeMs, force })` is the separate quota coordinator. It admits reads only while
-    the current lifecycle satisfies the card's Connected predicate, then wraps `shared`'s numeric-only read
-    in one process-global, memory-only cache and single-flight. An ordinary read reuses the latest completed
-    attempt younger than `maxAgeMs`; force bypasses age but still joins an in-flight read. Failure returns
-    the last successful numbers as `stale`, or closed `unavailable` before any success. Lifecycle change
-    clears both freshness and the old successful fallback, so another account can never inherit it; a read
-    after that edge waits out but never joins/returns an in-flight task from the prior generation. Values
-    never persist. The caller supplies the settings-derived age, so auth does
-    not import the settings sibling.
-
-    Watcher events are debounced/coalesced and each rebuild re-inspects the latest version + artifact
-    postcondition. A monotonic request sequence prevents an older candidate from activating after a newer
-    file event. On success, auth activates the candidate for provider/model reads and future sessions, clears
-    `load-failed`, and publishes model/provider invalidation. Existing live sessions deliberately retain the
-    runtime they were created with—including a Central-backed session after global Disconnect—until that
-    session is disposed or the host restarts. They are never drained or reattached.
-
-    A candidate failure retains the current runtime and reports `load-failed`; it never seals unrelated model
-    actions. Retry, a later file event, or Disconnect requests another rebuild. One process-wide single-flight
-    serializes CLI actions, while candidate requests coalesce to the newest observed artifact state. Status and
-    action results use only the closed contracts taxonomy—never child output, extension contents, diagnostics,
-    proxy data, raw models, or arbitrary thrown messages.
 - **Public surface (barrel):** `getProviderStatus`, `buildProviderReport` (+ `ProviderStatusSources`);
   `detectAccounts`;
   `startLogin`, `resolveLogin`, `cancelLogin`, `cancelAllLogins`, `logoutProvider`,
-  `setLoginPublisher`, `setLogoutPublisher`; `initializeJbcentralRuntime`, `stopJbcentralRuntime`, `getJbcentralStatus`,
-  `getJbcentralQuota`, `connectJbcentral`, `disconnectJbcentral`, `startProxyJbcentral`,
-  `updateJbcentral`, `jbcentralLogin`, the successful-action /
-  runtime-changed publisher seams, and the explicit `resetJbcentralStateForTests` lifecycle seam used by
-  sibling host tests.
-- **Allowed deps:** `contracts` (wire types); `shared/jbcentral`; the **`agent` barrel** for the current
-  runtime/auth facade plus candidate prepare/activate; `@earendil-works/pi-ai` (auth interaction **types** only).
+  `setLoginPublisher`, `setLogoutPublisher`.
+- **Allowed deps:** `contracts` (wire types); the **`agent` barrel** for the current runtime/auth facade;
+  `@earendil-works/pi-ai` (auth interaction **types** only).
 - **Forbidden:** reaching into `agent` internals (runtime and generation changes only through its barrel); importing `host`,
   `settings`, or any other sibling; deep-importing pi's TUI (`modes/interactive/*`) for its private provider constants;
   ever putting a credential **value** on the wire.
@@ -190,8 +120,7 @@ ourselves and never surface a credential value over the wire.
 
 - **`loginStart` must not `await` the flow** — return the handle, run `login()` detached.
 - **Pre-session runtime/auth reads and writes capture the current generation.** Pi's login/logout synchronizes
-  the captured runtime locally; live sessions keep their own generation. Artifact drift builds and atomically
-  activates a new current generation without mutating either the candidate or existing sessions in place.
+  the captured runtime locally; live sessions keep their own generation.
 - **API keys persist only through `login(id, "api_key", interaction)`** — `setRuntimeApiKey` is a
   session-lifetime overlay and would silently drop the key on host restart. The interaction is the real
   dialog bridge, never a canned auto-answer (a canned one can only serve single-prompt providers).
@@ -201,6 +130,6 @@ ourselves and never surface a credential value over the wire.
 
 ## Consumed by
 
-`host` (wires all `provider.*` handlers + the `provider.login` channel publish and stops the Central watcher);
+`host` (wires all `provider.*` handlers + the `provider.login` channel publish);
 `agent` does **not** depend on `auth` (the edge is one-way: `auth` → `agent` through the current-runtime and
 candidate-generation seams).

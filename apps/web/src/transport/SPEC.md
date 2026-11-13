@@ -32,19 +32,23 @@ batches high-frequency Pi events without allowing later wire messages to overtak
   response can, and the request it named is already gone from `pending`, so nothing would replay or re-ack it;
   `resume` repairs them all at once by restating the truth rather than confirming the confirmations —, channel
   `subscribe` with last-value replay for snapshots; append-only terminal data and the one-shot terminal
-  exit/detach + session-creation/deletion + `provider.changed` invalidation + addressed `feedback.interview`
+  exit/detach + session-creation/deletion + `provider.changed` invalidation +
   channels, plus scoped `session.resourcesChanged` invalidations and per-session `mcp.status` snapshots, are never cached or replayed to late
   subscribers. Resource metadata hydration belongs to the mounted chat integration, not replayed
   invalidation payloads. Reconnect/backoff;
   `inferUrl` defaults to
   same-origin; **`httpBase()`** derives the host's HTTP origin
   from the WS `url` — for building host HTTP URLs like the `/files/<workspaceId>/<path>` worktree-file
-  endpoint the markdown viewer points relative `<img>`s at, targeting the same host the transport dials); `piEventBatcher.ts`
+  endpoint the markdown viewer points relative `<img>`s at, targeting the same host the transport dials);
+names the operation instead of repeating a wire method and its params shape at every call site; they add no
+ordering, no store folding, and no client-side path shape check of their own, because a mutation converges
+re-runs on, the host decides containment and what a missing source or an occupied target mean, and a refusal
+rejects as an ordinary failed request (`RequestError` only when the host names a code); `piEventBatcher.ts`
   (the browser-side bounded queue for consecutive `pi.event` frames: exact arrival order, no dropped events,
   one atomic delivery at roughly 30 Hz, a 128-event forced-flush ceiling, and `flush`/`dispose` lifecycle);
   `wireTransport.ts` (`initTransport`/
   `getTransport` singleton; routes `server.welcome`, **`host.updateAvailable`**, **`project.updated`**, `pi.event`, `pi.extensionUi`,
-  **`session.created`**, **`session.deleted`**, **`provider.changed`**, addressed **`feedback.interview`**, **the
+  **`session.created`**, **`session.deleted`**, **`provider.changed`**, **the
   `workspace.created`/`updated`/`removed` lifecycle trio, and `workspace.fsChanged`** into the store — and
   folds every connection transition through
   `setStatus`, whose connected generation gives active-workspace hydration a distinct trigger on every
@@ -66,9 +70,7 @@ batches high-frequency Pi events without allowing later wire messages to overtak
   `noteProviderChanged()` plus a `model.list` re-read installed through the store's monotonic provider-version
   guard (the model-catalog hook uses the same guarded write for every list/refresh, so an older reply cannot
   restore a removed generation's models; provider settings observes the same version and re-reads
-  `provider.status`), each valid `server.welcome` first clearing any popup projection left by a host restart,
-  then `feedback.interview` via the idempotent `showInterviewPrompt()` (a surviving host claim re-delivers the
-  addressed event immediately after welcome),
+  `provider.status`),
   `workspace.fsChanged` via `noteFsChanged(payload)`, **`mcp.status`** via the generation-guarded
   `applyMcpStatus(snapshot)`, and **`settings.changed`** via `applyConfig(config)` — the post-startup server-synced app config broadcast;
   welcome config lands in the atomic install above.
@@ -179,10 +181,10 @@ The browser never scrubs or holds a vendor client: the host is the only sanitize
   `SessionDeletedPayload` for `session.deleted`,
   `HOST_UPDATE_RUN_PROTOCOL_VERSION` + `Ack` + the typed `host.update` method for the CLI-host update action,
   `PLAN_REVIEW_SUBAGENT_PROTOCOL_VERSION` for the `supportsPlanReview` gate,
-  `CHANGE_MUTATIONS_PROTOCOL_VERSION` for the diff-mutation gate, `REVIEW_RICH_ANCHORS_PROTOCOL_VERSION`
+  `CHANGE_MUTATIONS_PROTOCOL_VERSION` for the diff-mutation gate, `WORKSPACE_FILE_MUTATIONS_PROTOCOL_VERSION`
+  for the file/folder-mutation gate, `REVIEW_RICH_ANCHORS_PROTOCOL_VERSION`
   for the rich-anchor authoring gate, `CLIENT_ERROR_REPORT_PROTOCOL_VERSION` + `ClientErrorReport` for
-  `client.reportError`, `provider.changed`, the empty
-  addressed `feedback.interview` invitation, `HostUpdateNotice` for `server.welcome` +
+  `client.reportError`, `provider.changed`, `HostUpdateNotice` for `server.welcome` +
   `host.updateAvailable`,
   `WorkspaceFsChangedPayload` for `workspace.fsChanged`, and `AppConfig` for `server.welcome`'s config +
   `settings.changed`); `store`

@@ -151,7 +151,7 @@ export function resolveSettingsSection(
 	groups: SettingsNavGroup[],
 ): SettingsSection {
 	const available = groups.flatMap((g) => g.sections);
-	if (section === SettingsSection.Feedback || available.some((s) => s.id === section)) {
+	if (available.some((s) => s.id === section)) {
 		return section;
 	}
 	if (available.some((s) => s.id === SettingsSection.Appearance)) {

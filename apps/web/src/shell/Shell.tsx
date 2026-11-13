@@ -9,7 +9,6 @@ import { IconButton } from "@thinkrail/ui/button";
 import { useEffect, useState } from "react";
 import { NotificationPermissionPrompt, useAttentionNotifications } from "../notifications";
 import { AnalyticsConsentDialog } from "../panels/AnalyticsConsentDialog";
-import { InterviewPromptDialog } from "../panels/InterviewPromptDialog";
 import { NewWorkspaceDialog } from "../panels/NewWorkspaceDialog";
 import { SettingsDialog } from "../panels/SettingsDialog";
 import { Toaster } from "../panels/Toaster";
@@ -39,7 +38,6 @@ import {
 import { UpdateInstallSurfaces, UpdateReadyButton, UpdateSettings, useUpdates } from "../updates";
 import { AppShortcuts } from "./AppShortcuts";
 import { BrandLogo } from "./BrandLogo";
-import { JbcentralQuotaTopbar } from "./JbcentralQuotaTopbar";
 import { LayoutSettings } from "./LayoutSettings";
 import { useLocalLayoutState } from "./layoutState";
 import { LocationBar } from "./locationBar";
@@ -194,7 +192,6 @@ export function Shell() {
 							onOpen={() => useAppStore.getState().openSettings(SettingsSection.Updates)}
 						/>
 					) : null}
-					<JbcentralQuotaTopbar />
 					<span
 						data-testid="connection-status"
 						data-status={status}
@@ -258,11 +255,7 @@ export function Shell() {
 			) : (
 				<ProjectHome projects={homeProjects} />
 			)}
-			{onboardingActive ? null : analyticsConsentOpen ? (
-				<AnalyticsConsentDialog />
-			) : (
-				<InterviewPromptDialog />
-			)}
+			{!onboardingActive && analyticsConsentOpen ? <AnalyticsConsentDialog /> : null}
 			<SessionSwitcher
 				open={sessionSwitcherOpen}
 				onOpenChange={(open) => {

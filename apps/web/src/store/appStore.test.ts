@@ -179,7 +179,6 @@ beforeEach(() => {
 		activeLogin: null,
 		settingsOpen: false,
 		settingsSection: "providers",
-		interviewPromptOpen: false,
 		chatLineWidth: DEFAULT_CONFIG.chatLineWidth,
 		fileLineWidth: DEFAULT_CONFIG.fileLineWidth,
 		chatLineWidthBounded: DEFAULT_CONFIG.chatLineWidthBounded,
@@ -3756,23 +3755,6 @@ test("openSettings deep-links to a section (default providers); closeSettings hi
 	expect(useAppStore.getState().settingsSection).toBe("providers");
 });
 
-test("the interview prompt show action is idempotent and hide clears it", () => {
-	let updates = 0;
-	const unsubscribe = useAppStore.subscribe(() => {
-		updates += 1;
-	});
-
-	useAppStore.getState().showInterviewPrompt();
-	useAppStore.getState().showInterviewPrompt();
-	expect(useAppStore.getState().interviewPromptOpen).toBe(true);
-	expect(updates).toBe(1);
-
-	useAppStore.getState().hideInterviewPrompt();
-	expect(useAppStore.getState().interviewPromptOpen).toBe(false);
-	expect(updates).toBe(2);
-	unsubscribe();
-});
-
 test("an error frame is terminal: sets status/error and clears the live input + progress", () => {
 	const s = useAppStore.getState();
 	s.beginLogin("l1", "anthropic");
@@ -4010,22 +3992,6 @@ test("applyConfig projects disabled extensions and an older host's missing list 
 	const { disabledExtensions: _omitted, ...olderHost } = DEFAULT_CONFIG;
 	useAppStore.getState().applyConfig(olderHost as typeof DEFAULT_CONFIG);
 	expect(useAppStore.getState().disabledExtensions).toEqual([]);
-});
-
-test("applyConfig projects JetBrains quota display and cadence", () => {
-	expect(useAppStore.getState()).toMatchObject({
-		jbcentralQuotaEnabled: true,
-		jbcentralQuotaRefreshSeconds: 30,
-	});
-	useAppStore.getState().applyConfig({
-		...DEFAULT_CONFIG,
-		jbcentralQuotaEnabled: false,
-		jbcentralQuotaRefreshSeconds: 1,
-	});
-	expect(useAppStore.getState()).toMatchObject({
-		jbcentralQuotaEnabled: false,
-		jbcentralQuotaRefreshSeconds: 1,
-	});
 });
 
 test("chat presentation preferences are client-local and cannot be overwritten by host config", () => {
