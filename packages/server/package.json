@@ -28,6 +28,7 @@
 		"@thinkrail/shared": "workspace:*",
 		"bun-pty": "0.5.1",
 		"jsonc-parser": "3.3.1",
+		"lib0": "0.2.119",
 		"pi-background-commands": "workspace:*",
 		"pi-delegation": "workspace:*",
 		"pi-spec-graph": "workspace:*",
@@ -38,11 +39,16 @@
 		"pino-pretty": "13.2.0",
 		"pino-roll": "4.0.0",
 		"posthog-node": "5.46.1",
+		"pyright": "1.1.414",
 		"trash": "10.1.1",
-		"typebox": "catalog:"
+		"typebox": "catalog:",
+		"typescript": "catalog:",
+		"typescript-language-server": "6.0.3",
+		"vscode-ws-jsonrpc": "4.0.3",
+		"y-protocols": "catalog:",
+		"yjs": "catalog:"
 	},
 	"devDependencies": {
-		"@types/bun": "catalog:",
-		"typescript": "catalog:"
+		"@types/bun": "catalog:"
 	}
 }

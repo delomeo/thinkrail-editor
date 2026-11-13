@@ -39,7 +39,9 @@
 			"shiki": "4.5.0",
 			"tailwindcss": "4.3.3",
 			"typebox": "1.3.27",
-			"typescript": "6.0.3"
+			"typescript": "6.0.3",
+			"y-protocols": "1.0.7",
+			"yjs": "13.6.33"
 		}
 	},
 	"overrides": {
@@ -129,6 +131,7 @@
 	],
 	"patchedDependencies": {
 		"@pierre/diffs@1.5.1": "patches/@pierre%2Fdiffs@1.5.1.patch",
-		"@earendil-works/pi-ai@1.4.0": "patches/@earendil-works%2Fpi-ai@1.4.0.patch"
+		"@earendil-works/pi-ai@1.4.0": "patches/@earendil-works%2Fpi-ai@1.4.0.patch",
+		"y-monaco@0.1.6": "patches/y-monaco@0.1.6.patch"
 	}
 }
