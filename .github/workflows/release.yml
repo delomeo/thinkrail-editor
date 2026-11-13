@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Build Linux (Installer + CLI)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - name: Cache bun install
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
+      - name: Install desktop runtime packages
+        uses: ./.github/actions/desktop-apt
+      - name: Download the Electrobun toolchain
+        run: .github/scripts/prepare-electrobun.sh
+      - name: Build CLI binary & Stable Desktop Installer
+        run: |
+          bun run build:binary
+          bun run desktop:package:stable
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: linux-x64
+          path: |
+            apps/cli/dist/*
+            apps/desktop/artifacts/**/*
+
+  build-windows:
+    name: Build Windows (Installer + CLI)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+          no-cache: true
+      - run: bun install --frozen-lockfile
+      - name: Download the Electrobun toolchain
+        shell: bash
+        run: bash .github/scripts/prepare-electrobun.sh
+      - name: Build CLI binary & Stable Desktop Installer
+        run: |
+          bun run build:binary
+          bun run desktop:package:stable
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-x64
+          path: |
+            apps/cli/dist/*
+            apps/desktop/artifacts/**/*
+
+  release:
+    name: Publish GitHub Release
+    needs: [build-linux, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/**/*
+          generate_release_notes: true
