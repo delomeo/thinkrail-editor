@@ -67,6 +67,11 @@ import type {
 	TurnChangeSet,
 	UserThemesSnapshot,
 	Workspace,
+	WorkspaceFileCreateParams,
+	WorkspaceFileWriteParams,
+	WorkspaceFolderCreateParams,
+	WorkspacePathDeleteParams,
+	WorkspacePathRenameParams,
 } from "./domain";
 import { isDelegationRunDetails } from "./domain";
 import type {
@@ -121,7 +126,9 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 96;
+export const PROTOCOL_VERSION = 98;
+export const UI_SCALE_PROTOCOL_VERSION = 98;
+export const WORKSPACE_FILE_MUTATIONS_PROTOCOL_VERSION = 97;
 export const RESOURCE_HISTORY_PROTOCOL_VERSION = 96;
 export const PROJECT_CLONE_PROTOCOL_VERSION = 95;
 export const ONBOARDING_PROTOCOL_VERSION = 94;
@@ -168,9 +175,7 @@ export const WINDOWS_SHELL_SETTINGS_PROTOCOL_VERSION = 62;
 export const PROJECT_TEMPLATE_PREVIEW_PROTOCOL_VERSION = 63;
 export const THEME_SYSTEM_PROTOCOL_VERSION = 58;
 export const SUBAGENT_SETTINGS_PROTOCOL_VERSION = 57;
-export const JBCENTRAL_QUOTA_PROTOCOL_VERSION = 59;
 export const WORKSPACE_RENAME_PROTOCOL_VERSION = 55;
-export const FEEDBACK_INTERVIEW_PROTOCOL_VERSION = 56;
 
 export type HostPlatform = "darwin" | "linux" | "win32";
 
@@ -246,6 +251,11 @@ export const WS_METHODS = {
 	workspaceWatchReady: "workspace.watchReady",
 	workspaceOpenIn: "workspace.openIn",
 	workspaceReveal: "workspace.reveal",
+	workspaceFileWrite: "workspace.file.write",
+	workspaceFileCreate: "workspace.file.create",
+	workspaceFolderCreate: "workspace.folder.create",
+	workspacePathRename: "workspace.path.rename",
+	workspacePathDelete: "workspace.path.delete",
 	editorList: "editor.list",
 	gitListBranches: "git.listBranches",
 	gitPrefetch: "git.prefetch",
@@ -685,6 +695,18 @@ export interface WsMethodMap {
 	};
 	"workspace.openIn": { params: { id: string; editor: string }; result: Ack };
 	"workspace.reveal": { params: { id: string }; result: Ack };
+	"workspace.file.write": {
+		params: WorkspaceFileWriteParams;
+		/** `path` is the host's normalized form; `meta` is the written file's new identity. */
+		result: { path: string; meta: ResourceMeta };
+	};
+	"workspace.file.create": {
+		params: WorkspaceFileCreateParams;
+		result: { path: string; meta: ResourceMeta };
+	};
+	"workspace.folder.create": { params: WorkspaceFolderCreateParams; result: { path: string } };
+	"workspace.path.rename": { params: WorkspacePathRenameParams; result: { path: string } };
+	"workspace.path.delete": { params: WorkspacePathDeleteParams; result: Ack };
 	"editor.list": { params: Record<string, never>; result: EditorInfo[] };
 	"git.listBranches": { params: { projectId: string }; result: BranchList };
 	"git.prefetch": { params: { projectId: string; ref: string }; result: { ok: boolean } };

@@ -3,6 +3,7 @@ import {
 	DEFAULT_CONFIG,
 	isSettleIdleDays,
 	isSubagentMaxConcurrent,
+	isWorkspaceRelativePath,
 	RECENT_MODELS_LIMIT,
 	type ReviewFixDetails,
 	SETTLE_IDLE_DAYS,
@@ -25,7 +26,6 @@ import {
 	isBackgroundCommandCompletionMessage,
 	isTodoReviewFixMessage,
 	isToolResponsePending,
-	JBCENTRAL_QUOTA_PROTOCOL_VERSION,
 	LOCALES_PROTOCOL_VERSION,
 	MCP_PROTOCOL_VERSION,
 	MCP_TOOL_GRANTS_PROTOCOL_VERSION,
@@ -53,12 +53,16 @@ import {
 	TOOL_RESPONSE_CUSTOM_TYPE,
 	TOOL_RESPONSE_PROTOCOL_VERSION,
 	TURN_CHANGES_PROTOCOL_VERSION,
+	UI_SCALE_PROTOCOL_VERSION,
 	USER_THEMES_PROTOCOL_VERSION,
 	WINDOWS_SHELL_SETTINGS_PROTOCOL_VERSION,
+	WORKSPACE_FILE_MUTATIONS_PROTOCOL_VERSION,
 	WORKSPACE_READ_STATE_PROTOCOL_VERSION,
 	WORKSPACE_SETTLE_PROTOCOL_VERSION,
 	WS_CHANNELS,
 	WS_METHODS,
+	type WsParams,
+	type WsRequest,
 } from "./wsProtocol";
 
 test("retired workspace activity keeps only its empty snapshot compatibility method", () => {
@@ -445,6 +449,97 @@ test("resource history pages a chat's finished records from v96", () => {
 	expect(RESOURCE_HISTORY_PROTOCOL_VERSION).toBe(96);
 	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(RESOURCE_HISTORY_PROTOCOL_VERSION);
 	expect(WS_METHODS.sessionResourceHistory).toBe("session.resourceHistory");
+});
+
+test("workspace file and path mutations are registered from v97", () => {
+	expect(WORKSPACE_FILE_MUTATIONS_PROTOCOL_VERSION).toBe(97);
+	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(WORKSPACE_FILE_MUTATIONS_PROTOCOL_VERSION);
+	expect(WS_METHODS.workspaceFileWrite).toBe("workspace.file.write");
+	expect(WS_METHODS.workspaceFileCreate).toBe("workspace.file.create");
+	expect(WS_METHODS.workspaceFolderCreate).toBe("workspace.folder.create");
+	expect(WS_METHODS.workspacePathRename).toBe("workspace.path.rename");
+	expect(WS_METHODS.workspacePathDelete).toBe("workspace.path.delete");
+});
+
+test("the interface text scale joins the wire at v98", () => {
+	expect(UI_SCALE_PROTOCOL_VERSION).toBe(98);
+	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(UI_SCALE_PROTOCOL_VERSION);
+});
+
+test("mutation params are the typed wire shape and survive a JSON round-trip", () => {
+	const write: WsRequest<"workspace.file.write"> = {
+		id: "r1",
+		method: "workspace.file.write",
+		params: { workspaceId: "w1", relativePath: "src/new.ts", content: "export const a = 1;\n" },
+	};
+	const create: WsRequest<"workspace.file.create"> = {
+		id: "r2",
+		method: "workspace.file.create",
+		params: { workspaceId: "w1", relativePath: "new.md", content: "# new\n" },
+	};
+	const emptyCreate: WsRequest<"workspace.file.create"> = {
+		id: "r3",
+		method: "workspace.file.create",
+		params: { workspaceId: "w1", relativePath: "new.md" },
+	};
+	const folder: WsRequest<"workspace.folder.create"> = {
+		id: "r4",
+		method: "workspace.folder.create",
+		params: { workspaceId: "w1", relativePath: "docs" },
+	};
+	const rename: WsRequest<"workspace.path.rename"> = {
+		id: "r5",
+		method: "workspace.path.rename",
+		params: { workspaceId: "w1", fromPath: "docs", toPath: "notes" },
+	};
+	const remove: WsRequest<"workspace.path.delete"> = {
+		id: "r6",
+		method: "workspace.path.delete",
+		params: { workspaceId: "w1", relativePath: "notes" },
+	};
+
+	for (const request of [write, create, emptyCreate, folder, rename, remove]) {
+		expect(JSON.parse(JSON.stringify(request))).toEqual(request);
+	}
+	// An empty create carries no content field at all; a write's content is the whole buffer.
+	expect(Object.hasOwn(JSON.parse(JSON.stringify(emptyCreate)), "content")).toBe(false);
+	expect(write.params.content).toBe("export const a = 1;\n");
+});
+
+test("relative paths are checked in the wire's worktree-relative form on both sides", () => {
+	for (const path of [
+		"src/auth/login.ts",
+		".env",
+		"a..b",
+		"..hidden",
+		"src\\auth",
+		"ünïcödé/文件.md",
+	])
+		expect(isWorkspaceRelativePath(path)).toBe(true);
+	for (const path of [
+		"",
+		"/",
+		"/abs/path",
+		"./x",
+		"../x",
+		"a/./b",
+		"a/../b",
+		"a//b",
+		"a/b/",
+		"a\0b",
+	]) {
+		expect(isWorkspaceRelativePath(path)).toBe(false);
+	}
+	for (const value of [null, undefined, 42, {}, []])
+		expect(isWorkspaceRelativePath(value)).toBe(false);
+
+	const escaping: WsParams<"workspace.path.rename"> = {
+		workspaceId: "w1",
+		fromPath: "a",
+		toPath: "../outside",
+	};
+	expect(isWorkspaceRelativePath(escaping.fromPath)).toBe(true);
+	expect(isWorkspaceRelativePath(escaping.toPath)).toBe(false);
 });
 
 describe("completionDelivery", () => {

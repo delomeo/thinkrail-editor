@@ -5,7 +5,7 @@ status: active
 title: Wire contracts
 parent: architecture
 depends-on: []
-references: [central-integration, module-pi-background-commands]
+references: [module-pi-background-commands]
 tags: [wire]
 ---
 
@@ -47,7 +47,10 @@ default, narrow cross-ring guards, and the quit-confirmation rule both clients d
   labels), the optional shell-local desktop capabilities);
   `QUIT_CONFIRMATION` + **`createQuitConfirmation`** + `QuitConfirmationDependencies` from `quitConfirmation`; the value
   re-exports
-  `DEFAULT_CONFIG`, `DEFAULT_WORKSPACE_NAME` (the host's name for a project's default workspace; clients
+  `DEFAULT_CONFIG`, `DEFAULT_EDITOR_SETTINGS` + **`normalizeEditorSettings(value)`** +
+  **`mergeEditorSettings(current, patch)`** + **`parseRgbColor(value)`** + **`rgbaPaint(value, alpha)`**
+  (the nested `AppConfig.editor` settings bag, its shipped defaults document, and its one colour reading),
+  `DEFAULT_WORKSPACE_NAME` (the host's name for a project's default workspace; clients
   word it in their language until it is renamed), `SYSTEM_LOCALE_PREFERENCE` + **`isLocalePreference(value)`** (`"system"` or a canonical
   BCP-47 tag — the `AppConfig.locale` contract; local language file shapes are `LocalLocalesSnapshot` /
   `LocalLocaleFile` with closed error codes, served by `locales.list` from `LOCALES_PROTOCOL_VERSION`, v89;
@@ -55,7 +58,6 @@ default, narrow cross-ring guards, and the quit-confirmation rule both clients d
   `USER_THEMES_PROTOCOL_VERSION`, v92, with each ok file's `manifest` deliberately `unknown` because the
   theme schema is owned by [[submodule-web-themes]]),
   `THEME_MODES`, `isThemeMode`, `isSystemThemePair`, `normalizeThemePreference`,
-  `JBCENTRAL_QUOTA_REFRESH_SECONDS`, `isJbcentralQuotaRefreshSeconds`, `isJbcentralConnected`,
   `SESSION_RENAME_PROTOCOL_VERSION`, `SESSION_TITLE_MAX_LENGTH`, `normalizeSessionTitle`,
   `FIRST_PROMPT_MAX_LENGTH` + **`firstPromptHead(text)`** + **`firstPromptOfTexts(texts)`** +
   **`clampToCodePoints(text, maxUnits)`** (the one shared reading of a chat's first prompt for the
@@ -73,7 +75,10 @@ default, narrow cross-ring guards, and the quit-confirmation rule both clients d
   sides agree here rather than each re-deriving `startsWith`) + **`isRetriedAttempt(messages, index)`**
   (the one shared reading of pi's persisted-but-superseded auto-retry attempts — the client's hydration
   hides their turns, the host's history indexer skips their text; both consume the index slot so jump
-  anchors stay aligned) from `domain`; **`isTranscriptMessageRole(role)`**
+  anchors stay aligned) + **`isWorkspaceRelativePath(value)`** (the one shape test for a workspace path
+  mutation's paths: a non-empty, non-absolute, `/`-separated relative path with no empty or `.`/`..` segment
+  and no NUL — both sides refuse the same frames rather than each re-deriving it; containment stays the
+  host's call) from `domain`; **`isTranscriptMessageRole(role)`**
   and **`isSessionWorking(state)`** (running or idle on background work — the one working test every
   badge and glance uses) from `piProtocol` (`isTranscriptMessageRole` is the one definition of which roles a transcript carries: the host filters
   `session.getMessages` by it *and* `history` counts `messageIndex` by it, so two copies differing by a role
@@ -313,6 +318,12 @@ default, narrow cross-ring guards, and the quit-confirmation rule both clients d
   `null` meaning absent, and optional `trashed` — the absolute same-directory temporary claim path the
   trash helper received for a whole-file removal; the file consequently has that temporary name in the
   OS trash),
+  the **workspace path-mutation params** — **`WorkspaceFileWriteParams`** (`content` is the complete new file,
+  never a patch) / **`WorkspaceFileCreateParams`** (optional initial `content`; absent means an empty file) /
+  **`WorkspaceFolderCreateParams`** / **`WorkspacePathRenameParams`** (`fromPath` → `toPath`) /
+  **`WorkspacePathDeleteParams`**, each naming a worktree-relative path in the form `fs.readDir` lists, plus
+  **`isWorkspaceRelativePath`** as the shape both sides check before such a request crosses the wire (a
+  backslash is *not* rejected: it is a legal POSIX file name and a legal Windows separator),
   `Git*`/diff types — incl. **`GitDiffScope`** (what the Changes
   panel is diffing: `branch` → the workspace's work since diverging from its diff base (the range starts at
   their merge-base, never the base's tip) / `uncommitted` → worktree vs `HEAD` /
@@ -335,37 +346,13 @@ default, narrow cross-ring guards, and the quit-confirmation rule both clients d
   place** — collapsing them into one field would make a re-pointed target lie about where the branch came
   from; **`ProviderStatus`/`ProviderStatusReport`**
   — the auth-provider status rows the Welcome strip renders (per-provider `configured` + auth `kind`:
-  oauth / api-key / env / central / other — never credential values; `central` marks a built-in provider
-  whose registration the JetBrains AI (Central) extension replaced, derived from registration identity
-  alone, never from Central's configuration; plus `canOAuth`/`canApiKey`/`canLogout`,
+  oauth / api-key / env / other — never credential values; plus `canOAuth`/`canApiKey`/`canLogout`,
   which gate the strip's in-app Sign-in / Sign-out affordances — `canLogout` is true only for a removable
   auth.json credential, false for env / runtime / models.json auth the host can't unset); the **in-app login wire** — **`LoginFrame`** (the streamed
   flow updates: `authUrl` / `deviceCode` / `select` / `prompt` / `progress` / `success` / `error`, which
   **accumulate** client-side, never a credential value), **`LoginPush`** (the `provider.login` frame,
   `{ loginId, providerId, frame }`) and **`LoginReply`** (`{ loginId, value }` — the browser's answer to a
-  `select`/`prompt`); the JetBrains AI wire (protocol v43) — **`JbcentralStatus`**, nested on
-  `ProviderStatusReport`, is the closed host-authored lifecycle: `absent`, `outdated`, `supported`,
-  `configured`, `malformed-version`, `probe-failed`, `configuring`, or `load-failed`. Auth rides as a
-  **`signedOut` flag on `supported`/`configured`**, and configured status also carries the closed
-  **`proxyStopped`** observation; neither is a state of its own because credentials, proxy process health,
-  and configuration are independent axes. Both flags are *positively observed negative
-  facts* — unavailable or unreadable probes report `false`, so a client never renders a recovery demand the host did not
-  substantiate. No proxy port, PID, URL, status text, or diagnostics cross the wire. Only
-  parseable safe versions, closed probe/failure reasons, and the current action appear where relevant.
-  `configuring` covers both a reviewed CLI action and the coalesced candidate rebuild for the newest watched
-  artifact state; `configured` means the **current runtime for new work** applied that artifact.
-  `load-failed.configured` says whether the latest observed global state requested Central, so the client can
-  offer the closed Retry/Disconnect actions without receiving an artifact path. Historical live sessions may
-  retain an older runtime and are deliberately outside this status. **`JbcentralInstall`**
-  carries the host's per-OS `{platform,shell,command}` official install plan. **`JbcentralActionResult`** is
-  the closed `applied` / `failed` union; failure reasons distinguish installation, version probe/support,
-  Central action, artifact postcondition, and closed runtime-load failure without carrying messages. There
-  are no pending, restart, blocked-session, recovery, migration, compensation, or reattachment outcomes. Raw
-  stdout/stderr, generated extension content or paths, proxy URLs/secrets, diagnostics, affected-session ids,
-  and raw PI models are structurally absent; server and web map codes to their own generic copy). Protocol
-  v59 adds **`JbcentralQuotaSnapshot`**, the separate closed quota read: `hidden`, `available`, `stale`, or
-  `unavailable`; only available/stale carry finite recurring `remaining` / `total` numbers and an observation
-  timestamp. No account/plan/used/top-up/refill field or raw failure text exists;
+  `select`/`prompt`);
   the **theme/config selection** — **`ThemeId`** is an open string on the wire, because the host persists
   opaque selections while the independently shipped web client owns the available manifest catalog;
   **`ThemeMode`** is the closed `"fixed" | "system"` behavior and **`SystemThemePair`** carries one opaque
@@ -385,7 +372,6 @@ default, narrow cross-ring guards, and the quit-confirmation rule both clients d
   on both sides of the wire;
   **`SUBAGENT_SETTINGS_PROTOCOL_VERSION`** pins the global/workspace controls to their v57 wire
   introduction so a later web client hides them against an older host without comparing against the moving
-  latest protocol; **`JBCENTRAL_QUOTA_PROTOCOL_VERSION`** likewise pins the v59 quota read + settings;
   **`WINDOWS_SHELL_SETTINGS_PROTOCOL_VERSION`** pins the v62 Windows-shell setting so a later web client
   hides it against a host that can preserve but cannot apply that config field;
   **`PLAN_REVIEW_SUBAGENT_PROTOCOL_VERSION`** pins the v67 review reshape — the reviewer chat is gone, so
@@ -395,10 +381,18 @@ default, narrow cross-ring guards, and the quit-confirmation rule both clients d
   is what lets a client tell "this host has no reviewer chat" from "this host is older" rather than inferring it;
   **`AppConfig`** (`{ theme, themeMode, systemThemePair?, analyticsEnabled, analyticsConsentConfirmed, terminalReplayKb,
   terminalWindowsShell, composerGrowthLimit, chatLineWidth, fileLineWidth, chatLineWidthBounded,
-  fileLineWidthBounded, customLayoutPresets, defaultModel?, defaultEffort?, reviewModel?, reviewEffort?,
+  fileLineWidthBounded, uiScale, editor, customLayoutPresets, defaultModel?, defaultEffort?, reviewModel?, reviewEffort?,
   favoriteModels, recentModels, reviewAutoFix, agentReviewEnabled, subagentsEnabled, subagentMaxConcurrent,
-  jbcentralQuotaEnabled, jbcentralQuotaRefreshSeconds, disabledExtensions, onboardingDismissed }` — an extensible bag; the line-width fields join
-  the wire at protocol v61 and `terminalWindowsShell` at v62. `onboardingDismissed` (v94, default `false`)
+  disabledExtensions, onboardingDismissed }` — an extensible bag; the line-width fields join
+  the wire at protocol v61 and `terminalWindowsShell` at v62. **`editor`** is the nested editor-settings bag
+  (`{ indentRainbow: { enabled, style, lineOpacity, activeLineOpacity, backgroundOpacity, colors, excludedLanguages } }`):
+  its shipped defaults are the `defaultEditorSettings.json` document itself (`DEFAULT_EDITOR_SETTINGS`, colourized
+  indentation guides on, `lines` style, four cycle colours), and `normalizeEditorSettings` / `mergeEditorSettings`
+  are the one reading every ring uses to merge a partial user block over the values in force and clamp each
+  opacity into the `INDENT_RAINBOW_OPACITY` paint range. `parseRgbColor` + **`rgbaPaint(value, alpha)`** are the
+  matching colour reading — a configured colour becomes the paint a style draws with, `transparent` when the
+  colour or the alpha is unusable — so no ring re-derives that grammar. No client writes `editor` yet, so it needs
+  no protocol gate: an older host simply omits it and every consumer falls back to the shipped default. `onboardingDismissed` (v94, default `false`)
   records that the user finished or skipped the cold-start onboarding wizard, so it never returns. **`DEFAULT_MODEL_PROTOCOL_VERSION`** pins
   v72's AppConfig `defaultModel`/`defaultEffort` and host-side default resolution; the Settings controls are
   hidden against older hosts. `defaultModel` is a full allowlisted `WireModel`, `defaultEffort` is an optional
@@ -410,6 +404,11 @@ default, narrow cross-ring guards, and the quit-confirmation rule both clients d
   choice — a `session.create` that names a model and every `session.setModel`). Both default to `[]`, so a
   client gates only on the version, never on field presence. Snapshots in either list are re-pointed to the
   live catalog by the client before rendering; a model that left the catalog is simply not offered.
+  **`UI_SCALES`** (`"default" | "large" | "xlarge"`, default `"default"`) + **`isUiScale(value)`** is the closed
+  union for the synchronized `uiScale` field: the interface text size a user picked, joining the wire at protocol
+  v98 (**`UI_SCALE_PROTOCOL_VERSION`**) so the Settings control is hidden against a host that cannot store it.
+  The contract stores the id
+  only — the ladder it names belongs to the web type source, so no size number is ever carried on the wire.
   `terminalWindowsShell`
   (`"auto" | "pwsh" | "powershell" | "cmd"`, default `"auto"`) is read only by `server/terminal` on
   Windows and ignored elsewhere — see
@@ -443,8 +442,6 @@ default, narrow cross-ring guards, and the quit-confirmation rule both clients d
   `server.welcome`, mutated via `settings.update`). Every new user chat receives the resolved model and
   effort explicitly, so the session agrees with `model.default`; explicit request fields win individually,
   while an effort-only request uses the configured or fallback model. Plan-review subagents keep their own model policy.
-  **`InterviewResponse`** is the closed `"book" | "postpone" | "never"` action accepted from the automatic
-  feedback popup. No usage count, eligibility, dismissal state, or client identity crosses the wire.
   Contracts deliberately exports no theme catalog enum/list/labels: a future manifest can mint an id
   unknown when the host was built, and a client missing it resolves a same-appearance bundled fallback;
   **`SpecGraphNode`/`SpecGraphSnapshot`** — the
@@ -638,12 +635,7 @@ default, narrow cross-ring guards, and the quit-confirmation rule both clients d
   (**`loginStart`** — mints a `loginId` and runs pi's login flow **detached** (`type` `"oauth"` |
   `"api_key"`, issue #97 — both auth routes ride one channel; a flow can take minutes and must
   not sit on the request nor block the WS pump) / **`loginReply`** — answers a live `select`/`prompt`,
-  correlated by `loginId` / **`loginCancel`** / **`logout`** /
-  the **JetBrains AI** set **`jbcentralConnect`** / **`jbcentralDisconnect`** /
-  **`jbcentralStartProxy`** / **`jbcentralUpdate`** / **`jbcentralLogin`** (native global Central actions
-  returning `JbcentralActionResult`; none accepts an executable, artifact path, output, URL, or secret from
-  the client) / **`jbcentralQuota`** (v59; optional `force` bypasses completed-cache age but still joins an
-  in-flight read; disabled/unhealthy returns `hidden` without invoking quota)) /
+  correlated by `loginId` / **`loginCancel`** / **`logout`) /
   **`workspace.listExisting`** (the selected project's unattached Git worktrees, with detached rows
   disabled by status) / **`workspace.openExisting`** (revalidate + register one branch-backed checkout as
   `kind: "external"`, emitting the ordinary `workspace.created`, without mutating Git or disk) /
@@ -707,7 +699,20 @@ default, narrow cross-ring guards, and the quit-confirmation rule both clients d
   redo needs no third method). Receipts live in host memory only (per workspace: at most 20, at most
   64 MiB of held bytes, oldest evicted first, the newest always kept; dropped with the workspace): git
   and the OS trash already back recovery, so a data-dir format would buy nothing — hence
-  `RECEIPT_UNKNOWN` rather than a wire promise of durability / **`git.prefetch`** (best-effort background fetch of a
+  `RECEIPT_UNKNOWN` rather than a wire promise of durability / the **`workspace.file.*` + `workspace.path.*`
+  write path** (`WORKSPACE_FILE_MUTATIONS_PROTOCOL_VERSION` = v97) — **`workspace.file.write`** (`{ workspaceId,
+  relativePath, content }`) and **`workspace.file.create`** (`… , content?` — absent creates an empty file),
+  both → `{ path, meta }`: the host's normalized path and the written file's **new `ResourceMeta`**, which is
+  what lets a file pane re-key its buffer instead of re-reading it; `content` is the whole buffer because the
+  pane holds no host-side diff to apply a patch against. **`workspace.folder.create`** and
+  **`workspace.path.rename`** (`{ workspaceId, fromPath, toPath }`) → `{ path }`, and **`workspace.path.delete`**
+  → ack. Every path is the worktree-relative `/` form `fs.readDir` lists and `workspace.fsChanged` reports,
+  shape-checked by **`isWorkspaceRelativePath`** on both sides; worktree containment, the `.git` reach, and what
+  a missing source or an existing target mean remain the host's decision, so a refusal is a plain `error`
+  until some client must behave differently for one — that is when a code is earned, not before. Convergence is
+  the existing `workspace.fsChanged` push, and this is the *user's* file pane only: the agent's own edits
+  never cross the wire and the reviewer's byte-level `change.*` path keeps its compare-and-swap
+  expectations. Host handlers are the remaining half of this contract. / **`git.prefetch`** (best-effort background fetch of a
   remote base — the New-Workspace dialog's freshness warm-up; always acks `{ ok }`, and when the fetch
   actually moved the local remote-tracking ref the host follows up with pathless `workspace.fsChanged`
   frames to the workspaces whose diff base that ref is, so their git-derived reads re-converge) / **`skills.state`** (`SkillCatalogEntry[]` — full catalog +
@@ -737,10 +742,6 @@ default, narrow cross-ring guards, and the quit-confirmation rule both clients d
   because values may be secrets; `get` → `HostEnvironmentStatus` with `restartRequired`, `launchOverridden`
   names and the `effectiveAgentDir`; `update` replaces the whole record and returns
   `{ ok: false, issues }` per field/row index instead of saving anything when it is invalid) /
-  **`feedback.respond`** (`{ action: InterviewResponse }` → ack; persists the automatic invitation's book,
-  postpone, or permanent-dismiss result; the Settings link never calls it;
-  `FEEDBACK_INTERVIEW_PROTOCOL_VERSION` pins the addressed channel's v56 introduction so the host does not
-  claim an independently shipped older client that omits the current `?protocol=` socket capability) /
   **`client.reportError`** (`ClientErrorReport { kind: render | window | rejection, type, stack?,
   boundary?, chunkIds? }` → ack; `chunkIds` maps stack URLs to PostHog source-map chunk ids; a fire-and-forget UI error for host error tracking — the payload is raw and untrusted,
   the host is the only sanitizer; `CLIENT_ERROR_REPORT_PROTOCOL_VERSION` pins its v90 introduction so a
@@ -784,13 +785,12 @@ default, narrow cross-ring guards, and the quit-confirmation rule both clients d
   other frontends can list it in history without opening local placement) / **`session.deleted`** (workspace +
   session id; a non-replayable domain event broadcast after permanent deletion so every client removes the chat
   and blocks stale hydration) / **`settings.changed`** (the full `AppConfig`, including custom preset definitions, broadcast so every
-  client converges) / **`feedback.interview`** (an empty, addressed invitation sent only to the host-claimed
-  frontend; not broadcast, subscribed, or replayed) / **`provider.login`** — the session-less
+  client converges) / **`provider.login`** — the session-less
   in-app login stream (a `LoginPush`
   per frame, keyed by `loginId`; the sibling of `pi.extensionUi`, since a login runs on the Welcome screen
-  before any session exists) / **`provider.changed`** — a data-free invalidation broadcast after a watched
-  Central state/rebuild result changes the host-authoritative provider status or current model generation,
-  or a provider login (not an MCP sign-in) succeeds;
+  before any session exists) / **`provider.changed`** — a data-free invalidation broadcast when the
+  host-authoritative provider status or current model generation changes, or a provider login (not an MCP
+  sign-in) succeeds;
   clients re-read `provider.status` and invalidate `model.list`, so no raw provider/model data rides the push /
   `terminal.data` + **`terminal.exit`** + **`terminal.detached`** (the addressed terminal channels — sent to
   the single *attached* client rather than broadcast, so a shell's bytes never

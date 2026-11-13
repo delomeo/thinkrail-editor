@@ -8,5 +8,5 @@
 		"rootDir": "./src",
 		"types": ["bun"]
 	},
-	"include": ["src"]
+	"include": ["src", "src/**/*.json"]
 }

@@ -1,0 +1,13 @@
+{
+	"editor": {
+		"indentRainbow": {
+			"enabled": true,
+			"style": "lines",
+			"lineOpacity": 0.45,
+			"activeLineOpacity": 0.85,
+			"backgroundOpacity": 0.0,
+			"colors": ["#eab308", "#22c55e", "#3b82f6", "#a855f7"],
+			"excludedLanguages": []
+		}
+	}
+}

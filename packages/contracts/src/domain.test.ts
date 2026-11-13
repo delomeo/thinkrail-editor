@@ -15,6 +15,7 @@ import {
 	isLocalePreference,
 	isPlanReviewResult,
 	isRetriedAttempt,
+	isUiScale,
 	REQUEST_IMAGE_BASE64_BUDGET,
 	type ResourceRecord,
 	resourceHistoryCursor,
@@ -22,6 +23,7 @@ import {
 	resourceTallyTotal,
 	TODO_NUDGE_PREFIX,
 	tallyResources,
+	UI_SCALES,
 } from "./domain";
 
 describe("isRetriedAttempt", () => {
@@ -124,6 +126,9 @@ describe("config defaults", () => {
 	});
 
 	test("the interface scale defaults to the identity scale the type source issues", () => {
+		expect(DEFAULT_CONFIG).toHaveProperty("uiScale", "default");
+		for (const valid of UI_SCALES) expect(isUiScale(valid)).toBe(true);
+		for (const invalid of ["enormous", 1.25, null, ""]) expect(isUiScale(invalid)).toBe(false);
 	});
 });
 
