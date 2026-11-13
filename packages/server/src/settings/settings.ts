@@ -10,9 +10,12 @@ import {
 	isSystemThemePair,
 	isTerminalWindowsShell,
 	isThemeMode,
+	isUiScale,
 	LINE_WIDTH_COLUMNS,
+	mergeEditorSettings,
 	RECENT_MODELS_LIMIT,
 	sameModel,
+	UI_SCALES,
 	type WireModel,
 } from "@thinkrail/contracts";
 import { loadConfig, saveConfig } from "../persistence";
@@ -39,6 +42,8 @@ const ACCEPTED_UPDATE_KEYS = {
 	fileLineWidth: true,
 	chatLineWidthBounded: true,
 	fileLineWidthBounded: true,
+	uiScale: true,
+	editor: true,
 	customLayoutPresets: true,
 	favoriteModels: true,
 	defaultModel: true,
@@ -84,6 +89,12 @@ function validateFavoriteModels(value: unknown): WireModel[] {
 		throw new Error("favoriteModels must be a list of models");
 	}
 	return value.filter((model, index) => value.findIndex((m) => sameModel(m, model)) === index);
+}
+
+function validateEditorSettings(update: unknown): void {
+	if (typeof update !== "object" || update === null || Array.isArray(update)) {
+		throw new Error("editor settings must be an object");
+	}
 }
 
 function validateDisabledExtensions(value: unknown): string[] {
@@ -157,6 +168,7 @@ export function updateConfig(partial: AppConfigUpdate): AppConfig {
 		reviewEffort,
 		favoriteModels,
 		recentModels: _hostOwnedRecentModels,
+		editor,
 		customLayoutPresets,
 		subagentsEnabled,
 		theme,
@@ -202,6 +214,8 @@ export function updateConfig(partial: AppConfigUpdate): AppConfig {
 	) {
 		throw new Error(`composerGrowthLimit must be one of ${COMPOSER_GROWTH_LIMITS.join(", ")}`);
 	}
+	if (runtimeUpdate.uiScale !== undefined && !isUiScale(runtimeUpdate.uiScale)) {
+		throw new Error(`uiScale must be one of ${UI_SCALES.join(", ")}`);
 	}
 	if (
 		runtimeUpdate.settleIdleDays !== undefined &&
@@ -212,6 +226,7 @@ export function updateConfig(partial: AppConfigUpdate): AppConfig {
 	if (runtimeUpdate.locale !== undefined && !isLocalePreference(runtimeUpdate.locale)) {
 		throw new Error('locale must be "system" or a canonical BCP-47 language tag');
 	}
+	if (editor !== undefined) validateEditorSettings(editor);
 	if (themeMode !== undefined && !isThemeMode(themeMode)) {
 		throw new Error("themeMode must be fixed or system");
 	}
@@ -249,6 +264,7 @@ export function updateConfig(partial: AppConfigUpdate): AppConfig {
 			? {}
 			: { favoriteModels: validateFavoriteModels(favoriteModels) }),
 		...(nextDisabledExtensions === undefined ? {} : { disabledExtensions: nextDisabledExtensions }),
+		...(editor === undefined ? {} : { editor: mergeEditorSettings(current.editor, editor) }),
 	};
 	if (defaultModel !== undefined) {
 		if (defaultModel === null) delete next.defaultModel;

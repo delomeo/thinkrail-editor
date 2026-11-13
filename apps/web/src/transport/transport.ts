@@ -142,6 +142,34 @@ export class WsTransport {
 		};
 	}
 
+	createFile(
+		params: WsParams<"workspace.file.create">,
+	): Promise<WsResult<"workspace.file.create">> {
+		return this.request("workspace.file.create", params);
+	}
+
+	writeFile(params: WsParams<"workspace.file.write">): Promise<WsResult<"workspace.file.write">> {
+		return this.request("workspace.file.write", params);
+	}
+
+	createFolder(
+		params: WsParams<"workspace.folder.create">,
+	): Promise<WsResult<"workspace.folder.create">> {
+		return this.request("workspace.folder.create", params);
+	}
+
+	renamePath(
+		params: WsParams<"workspace.path.rename">,
+	): Promise<WsResult<"workspace.path.rename">> {
+		return this.request("workspace.path.rename", params);
+	}
+
+	deletePath(
+		params: WsParams<"workspace.path.delete">,
+	): Promise<WsResult<"workspace.path.delete">> {
+		return this.request("workspace.path.delete", params);
+	}
+
 	private queueAck(id: string): void {
 		this.ackQueue.push(id);
 		if (this.ackScheduled) return;

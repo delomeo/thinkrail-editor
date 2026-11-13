@@ -8,6 +8,7 @@ import {
 	type SessionStateRecord,
 	TOOL_RESPONSE_PROTOCOL_VERSION,
 	USER_THEMES_PROTOCOL_VERSION,
+	WORKSPACE_FILE_MUTATIONS_PROTOCOL_VERSION,
 } from "@thinkrail/contracts";
 import {
 	mergeSessionStateRecords,
@@ -18,7 +19,15 @@ import {
 	supportsRichAnchors,
 	supportsToolResponses,
 	supportsUserThemes,
+	supportsWorkspaceFileMutations,
 } from "./wireTransport";
+
+test("workspace file and folder mutations are offered only by a host at or beyond the v97 capability", () => {
+	expect(supportsWorkspaceFileMutations(WORKSPACE_FILE_MUTATIONS_PROTOCOL_VERSION)).toBe(true);
+	expect(supportsWorkspaceFileMutations(WORKSPACE_FILE_MUTATIONS_PROTOCOL_VERSION + 1)).toBe(true);
+	expect(supportsWorkspaceFileMutations(WORKSPACE_FILE_MUTATIONS_PROTOCOL_VERSION - 1)).toBe(false);
+	expect(supportsWorkspaceFileMutations(null)).toBe(false);
+});
 
 test("tool responses go to session.respondToTool only from a v93 host; older hosts take the ask answer", () => {
 	expect(supportsToolResponses(TOOL_RESPONSE_PROTOCOL_VERSION)).toBe(true);

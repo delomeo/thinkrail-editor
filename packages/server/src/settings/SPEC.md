@@ -14,7 +14,8 @@ pair, additional-analytics preference and first-run dialog completion marker, ho
 effort defaults, terminal replay budget and Windows shell preference, chat composer growth preset, chat/file
 visual line widths plus independent pane bounds, bounded custom layout-preset catalog, JetBrains quota
 display/cadence, the host-wide subagent default, plan-review policy, the host-registry extensions the
-user turned off, and the UI language preference (`locale`). `defaultModel` / `defaultEffort`
+user turned off, the interface text scale (`uiScale`), the nested editor-settings bag (`editor`, today its
+`indentRainbow` indentation colorizer), and the UI language preference (`locale`). `defaultModel` / `defaultEffort`
 select the defaults every new chat receives (unset model means the preferred available model — pi's provider default, else the first; unset effort means medium);
 `reviewModel` / `reviewEffort`
 select the reviewer runtime (unset means that same new-chat default); `reviewAutoFix: false` records a `request_changes`
@@ -32,8 +33,6 @@ Current workbench frame, workspace resource placement, current/default preset se
 A numeric setting is bounded by its consumer when that domain owns the safety cap—for example `terminal`
 clamps `terminalReplayKb`, so a hand-edited config cannot exhaust memory. Settings validates the shared
 40–240 line-width contract and custom layout presets because it owns their cross-frontend storage contract.
-It also validates the global `jbcentralQuotaEnabled` boolean and whole `jbcentralQuotaRefreshSeconds`
-interval (`1–3600`, default 30), because those values govern host process cadence across every frontend.
 
 ## Boundary
 
@@ -43,7 +42,7 @@ interval (`1–3600`, default 30), because those values govern host process cade
 - **Owns:** cached current `AppConfig`; `getConfig()`; `updateConfig(partial)` (reject a non-object or unknown key → merge → validate known fields → persist → publish the merged `AppConfig` and successful applied `AppConfigUpdate`); line-width and resource-free custom-preset validation/normalization; custom-preset safety caps; `setSettingsPublisher`; and `resetConfigCache` for tests.
 - **Public surface (barrel):** `getConfig`, `updateConfig`, `noteRecentModel`, `setSettingsPublisher`, `SettingsPublisher`, `resetConfigCache`, plus pure custom-preset normalization used by host startup after persistence load.
 - **Allowed deps:** `persistence` (`loadConfig`/`saveConfig`); `contracts` (`AppConfig`, `LayoutPreset`,
-  `isTerminalWindowsShell`).
+  `isTerminalWindowsShell`, `mergeEditorSettings`).
 - **Forbidden:** host or another feature sibling; current-layout document/snapshot types; workspace ids/resources; current frame validation; owning WS channels; or importing web preset definitions.
 
 ## Get right
@@ -53,7 +52,15 @@ interval (`1–3600`, default 30), because those values govern host process cade
   `isTerminalWindowsShell` guard, while a wire mutation outside the closed shell union rejects the complete
   update before cache, persistence, or broadcast changes. Settings owns validation and synchronization;
   `terminal` owns executable resolution and spawning.
+- `editor` is the one nested settings bag the host carries, and it is merged rather than replaced: an
+  `editor.indentRainbow` update joins the values in force through `mergeEditorSettings`, so one field never
+  discards its siblings. Each opacity is clamped into the shared 0–1 paint range instead of rejecting the
+  mutation, because the renderer that draws it owns that cap (`INDENT_RAINBOW_OPACITY`); an `editor` that is not
+  an object rejects the update like any other malformed value. No client names it on the wire yet — the host's
+  `config.json` is its only writer, so it needs no protocol gate, and a client that reads it falls back to the
+  shipped default when an older host omits it.
 - `chatLineWidth` / `fileLineWidth` independently default to 120 and accept only finite integers from 40 through 240; their `Bounded` switches independently default to `true`. A malformed stored field falls back without discarding valid siblings; any invalid supplied field rejects the complete mutation before cache, persistence, or broadcast changes.
+- `uiScale` is the closed `UI_SCALES` union (`default` / `large` / `xlarge`), default `default`: a stored value outside it falls back to the default, an update outside it rejects the complete mutation. Settings stores the id only — the ladder it names is generated from the web type source, so the host never resolves a size.
 - `subagentsEnabled` defaults to `true` when absent so old config preserves current behavior; a present non-boolean update is rejected before cache, persistence, or broadcast changes. Settings owns only that global default; workspace override and effective-value resolution stay outside this module.
 - `onboardingDismissed` defaults to `false` when absent or malformed on disk; a present non-boolean update is rejected like the other boolean fields. Only the web onboarding wizard reads it.
 - `subagentMaxConcurrent` (per-chat concurrent subagents) defaults to 4 when absent or malformed on disk; a wire update outside `isSubagentMaxConcurrent` (whole 1–16) rejects the complete mutation — never clamped. Like `subagentsEnabled`, settings owns only the global value.

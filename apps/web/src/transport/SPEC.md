@@ -40,8 +40,12 @@ batches high-frequency Pi events without allowing later wire messages to overtak
   same-origin; **`httpBase()`** derives the host's HTTP origin
   from the WS `url` — for building host HTTP URLs like the `/files/<workspaceId>/<path>` worktree-file
   endpoint the markdown viewer points relative `<img>`s at, targeting the same host the transport dials);
+**workspace file and folder mutation shortcuts** (`createFile` → `workspace.file.create`, `writeFile` →
+`workspace.file.write`, `createFolder` → `workspace.folder.create`, `renamePath` → `workspace.path.rename`,
+`deletePath` → `workspace.path.delete`) — the typed one-call form of `request` for that write path, so a pane
 names the operation instead of repeating a wire method and its params shape at every call site; they add no
 ordering, no store folding, and no client-side path shape check of their own, because a mutation converges
+through the host's existing `workspace.fsChanged` push that every `useWorkspaceRead`-backed read already
 re-runs on, the host decides containment and what a missing source or an occupied target mean, and a refusal
 rejects as an ordinary failed request (`RequestError` only when the host names a code); `piEventBatcher.ts`
   (the browser-side bounded queue for consecutive `pi.event` frames: exact arrival order, no dropped events,
@@ -151,7 +155,7 @@ The browser never scrubs or holds a vendor client: the host is the only sanitize
   `watchMcpWorkspace`, `ConnectionStatus`,
   `TransportOptions`, `runHostUpdate`, `supportsHostUpdateRun`, `supportsPlanReview`,
   `supportsPlanSummaryGeneration`, `supportsChangeMutations`, `supportsRichAnchors`, `supportsTurnChanges`,
-  `supportsUserThemes`, `supportsToolResponses`, `respondToTool`,
+  `supportsUserThemes`, `supportsToolResponses`, `supportsWorkspaceFileMutations`, `respondToTool`,
   `installClientErrorReporting`, `reportClientError`, `clientErrorReport`. `respondToTool(sessionId,
   toolCallId, response)` is the one place a tool response leaves the client (chat and plan page both use
   it): it sends `session.respondToTool` to a v93+ host and the retired `session.answerQuestion` below
@@ -171,7 +175,12 @@ The browser never scrubs or holds a vendor client: the host is the only sanitize
   `supportsTurnChanges` (`TURN_CHANGES_PROTOCOL_VERSION`, v80) is exported because `panels/useWorkspaceTurns`
   must not issue `workspace.turns` to a host that has no such method — without it the Changes scope menu
   simply shows no agent turns. The transport also subscribes to `turn.changed` and folds each recorded run
-  into `store.turnsByWorkspace` through `applyTurnChanged`. The byte-only
+  into `store.turnsByWorkspace` through `applyTurnChanged`. `supportsWorkspaceFileMutations`
+  (`WORKSPACE_FILE_MUTATIONS_PROTOCOL_VERSION`, v97) gates the five shortcuts: an older host serves no
+  `workspace.file.*` / `workspace.path.*` method, so a file surface — the topbar File menu's file items and the
+  `file.new` / `folder.new` / `file.save` chords ([[submodule-web-shell]], claimed by the Files surface and
+  the file panes while they are mounted)) — must withhold the affordance rather than send a request it can only report as a failure. The
+  byte-only
   resource shape needs no gate: a host older than `RESOURCE_META_PROTOCOL_VERSION` answers `fs.readFile`
   and `git.diffFile` without `meta`, which the panes read as "text" — exactly the surface that host's own
   client showed — and `/blob` is only ever addressed for a side the host itself reported as byte-only.

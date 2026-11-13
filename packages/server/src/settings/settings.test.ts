@@ -556,6 +556,69 @@ test("invalid line-width updates are rejected before persistence or broadcast", 
 	}
 });
 
+test("editor indentation settings default on, merge a partial override, and clamp an opacity", () => {
+	expect(getConfig().editor).toEqual(DEFAULT_CONFIG.editor);
+
+	const merged = updateConfig({
+		editor: { indentRainbow: { style: "background", lineOpacity: 0.2 } },
+	});
+	expect(merged.editor.indentRainbow).toMatchObject({
+		enabled: true,
+		style: "background",
+		lineOpacity: 0.2,
+		colors: DEFAULT_CONFIG.editor.indentRainbow.colors,
+	});
+	expect(
+		updateConfig({ editor: { indentRainbow: { backgroundOpacity: 4 } } }).editor.indentRainbow
+			.backgroundOpacity,
+	).toBe(1);
+});
+
+test("a malformed stored or supplied editor block falls back per field, never whole", () => {
+	writeFileSync(
+		join(dataDir, "config.json"),
+		JSON.stringify({
+			...DEFAULT_CONFIG,
+			editor: { indentRainbow: { enabled: false, colors: ["#fff"], lineOpacity: 9 } },
+		}),
+	);
+	resetConfigCache();
+
+	const stored = getConfig().editor.indentRainbow;
+	expect(stored.enabled).toBe(false);
+	expect(stored.lineOpacity).toBe(1);
+	expect(stored.colors).toEqual(DEFAULT_CONFIG.editor.indentRainbow.colors);
+
+	const before = getConfig();
+	expect(() => updateConfig({ editor: "nope" } as unknown as AppConfigUpdate)).toThrow();
+	expect(getConfig()).toEqual(before);
+});
+
+test("the ui scale defaults, persists, and a stored value that is not a scale falls back", () => {
+	expect(DEFAULT_CONFIG).toHaveProperty("uiScale", "default");
+	expect(updateConfig({ uiScale: "xlarge" }).uiScale).toBe("xlarge");
+	resetConfigCache();
+	expect(getConfig().uiScale).toBe("xlarge");
+	writeFileSync(
+		join(dataDir, "config.json"),
+		JSON.stringify({ ...DEFAULT_CONFIG, uiScale: "enormous" }),
+	);
+	resetConfigCache();
+	expect(getConfig().uiScale).toBe("default");
+});
+
+test("an unknown ui scale update is rejected before persistence or broadcast", () => {
+	const published: AppConfig[] = [];
+	setSettingsPublisher((config) => published.push(config));
+	const before = getConfig();
+	for (const update of [{ uiScale: "enormous" }, { uiScale: 1.25 }, { uiScale: null }]) {
+		expect(() => updateConfig(update as unknown as AppConfigUpdate)).toThrow();
+	}
+	expect(getConfig()).toEqual(before);
+	expect(published).toEqual([]);
+	expect(existsSync(join(dataDir, "config.json"))).toBe(false);
+});
+
 test("a non-boolean subagents update is rejected before persistence or broadcast", () => {
 	const published: AppConfig[] = [];
 	setSettingsPublisher((config) => published.push(config));

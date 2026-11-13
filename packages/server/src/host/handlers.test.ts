@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -95,7 +95,6 @@ beforeEach(() => {
 	dataDir = mkdtempSync(join(tmpdir(), "trpi-handlers-test-"));
 	process.env.THINKRAIL_DATA_DIR = dataDir;
 	resetConfigCache();
-	resetFeedbackForTests();
 	repo = join(dataDir, "repo");
 	mkdirSync(repo);
 	git(repo, "init", "-b", "main");
@@ -114,7 +113,6 @@ beforeEach(() => {
 afterEach(() => {
 	stopAllWatches();
 	resetConfigCache();
-	resetFeedbackForTests();
 	rmSync(dataDir, { recursive: true, force: true });
 	if (savedDataDir === undefined) delete process.env.THINKRAIL_DATA_DIR;
 	else process.env.THINKRAIL_DATA_DIR = savedDataDir;

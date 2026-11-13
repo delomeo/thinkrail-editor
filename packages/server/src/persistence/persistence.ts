@@ -12,6 +12,8 @@ import {
 	isSettleIdleDays,
 	isSubagentMaxConcurrent,
 	isTerminalWindowsShell,
+	isUiScale,
+	normalizeEditorSettings,
 	normalizeThemePreference,
 	type Project,
 	type SessionCompletion,
@@ -374,6 +376,8 @@ export function loadConfig(): AppConfig {
 			typeof value.fileLineWidthBounded === "boolean"
 				? value.fileLineWidthBounded
 				: DEFAULT_CONFIG.fileLineWidthBounded,
+		uiScale: isUiScale(value.uiScale) ? value.uiScale : DEFAULT_CONFIG.uiScale,
+		editor: normalizeEditorSettings(value.editor),
 		reviewAutoFix:
 			typeof value.reviewAutoFix === "boolean" ? value.reviewAutoFix : DEFAULT_CONFIG.reviewAutoFix,
 		agentReviewEnabled:

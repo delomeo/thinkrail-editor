@@ -16,7 +16,17 @@ import { basename, dirname, join } from "node:path";
 import type { ChangeReceipt, GitDiffScope, LineSpan, RevertTarget } from "@thinkrail/contracts";
 import { hashBytes } from "../fs";
 import { setTrashImplementationForTests } from "../trash";
-import { forgetWorkspaceChanges, retainReceipts, revertChange, undoChange } from "./changes";
+import {
+	createWorkspaceFile,
+	createWorkspaceFolder,
+	deleteWorkspacePath,
+	forgetWorkspaceChanges,
+	renameWorkspacePath,
+	retainReceipts,
+	revertChange,
+	undoChange,
+	writeWorkspaceFile,
+} from "./changes";
 import { splitLines } from "./textSplice";
 
 const BYTES = new TextEncoder();
@@ -50,7 +60,10 @@ function commitAll(message: string): string {
 }
 
 function write(path: string, content: string | Uint8Array): void {
-	writeFileSync(join(repo, path), content);
+	const abs = join(repo, path);
+	writeFileSync(abs, content);
+	// The fixture's modes must not follow the machine's umask; mode assertions compare against 0644.
+	chmodSync(abs, 0o644);
 }
 
 function read(path: string): Uint8Array {
@@ -66,10 +79,12 @@ function hash(content: string | Uint8Array | null): string | null {
 	return hashBytes(typeof content === "string" ? BYTES.encode(content) : content);
 }
 
-function expectTrashClaim(path: string | undefined): string {
+function expectTrashClaim(path: string | undefined, reason = "revert"): string {
 	if (path === undefined) throw new Error("missing trash claim");
 	expect(dirname(path)).toBe(repo);
-	expect(basename(path)).toMatch(/^\.thinkrail-revert-[0-7][0-9A-HJKMNP-TV-Z]{25}$/);
+	expect(basename(path)).toMatch(
+		new RegExp(`^\\.thinkrail-${reason}-[0-7][0-9A-HJKMNP-TV-Z]{25}$`),
+	);
 	return path;
 }
 
@@ -943,4 +958,185 @@ test("an undo refuses a file whose mode moved after the revert, even with identi
 		expect: { modifiedHash: hash("one\ntwo\nthree\n") },
 	});
 	expect(text("a.ts")).toBe("one\ntwo\nchanged\n");
+});
+
+test("creating a file writes its content and the parent directories it needs", () => {
+	const created = createWorkspaceFile({
+		workspaceId,
+		relativePath: "src/deep/new.ts",
+		content: "export const a = 1;\n",
+	});
+	expect(created.path).toBe("src/deep/new.ts");
+	expect(text("src/deep/new.ts")).toBe("export const a = 1;\n");
+	expect(created.meta).toEqual({
+		hash: hash("export const a = 1;\n"),
+		byteLength: 20,
+		text: true,
+	});
+	expect(statSync(join(repo, "src/deep/new.ts")).mode & 0o777).toBe(0o644);
+
+	const empty = createWorkspaceFile({ workspaceId, relativePath: "empty.md" });
+	expect(text("empty.md")).toBe("");
+	expect(empty.meta.byteLength).toBe(0);
+	expect(empty.meta.mime).toBe("text/markdown");
+});
+
+test("a whole-file write replaces the content, keeps the mode, and creates an absent file", () => {
+	chmodSync(join(repo, "a.ts"), 0o755);
+	const saved = writeWorkspaceFile({ workspaceId, relativePath: "a.ts", content: "rewritten\n" });
+	expect(text("a.ts")).toBe("rewritten\n");
+	expect(saved.meta.hash).toBe(hash("rewritten\n"));
+	expect(statSync(join(repo, "a.ts")).mode & 0o777).toBe(0o755);
+
+	writeWorkspaceFile({ workspaceId, relativePath: "src/new.ts", content: "x\n" });
+	expect(text("src/new.ts")).toBe("x\n");
+	expect(() => writeWorkspaceFile({ workspaceId, relativePath: "src", content: "y\n" })).toThrow(
+		"is a directory",
+	);
+});
+
+test("creating a folder makes the whole chain, and a name in use is refused", () => {
+	expect(createWorkspaceFolder({ workspaceId, relativePath: "docs/deep" })).toEqual({
+		path: "docs/deep",
+	});
+	expect(statSync(join(repo, "docs/deep")).isDirectory()).toBe(true);
+	expect(() => createWorkspaceFolder({ workspaceId, relativePath: "docs" })).toThrow(
+		"already exists",
+	);
+});
+
+test("renaming moves a file or a directory with its contents, into parents it creates", () => {
+	createWorkspaceFolder({ workspaceId, relativePath: "docs" });
+	createWorkspaceFile({ workspaceId, relativePath: "docs/note.md", content: "# note\n" });
+	createWorkspaceFile({ workspaceId, relativePath: "docs/keep.txt", content: "keep\n" });
+
+	expect(
+		renameWorkspacePath({ workspaceId, fromPath: "docs/note.md", toPath: "notes.md" }),
+	).toEqual({ path: "notes.md" });
+	expect(existsSync(join(repo, "docs/note.md"))).toBe(false);
+	expect(text("notes.md")).toBe("# note\n");
+
+	renameWorkspacePath({ workspaceId, fromPath: "docs", toPath: "archived/old/docs" });
+	expect(existsSync(join(repo, "docs"))).toBe(false);
+	expect(text("archived/old/docs/keep.txt")).toBe("keep\n");
+});
+
+test("renaming refuses a missing source, a taken target, and a directory moved inside itself", () => {
+	createWorkspaceFolder({ workspaceId, relativePath: "docs" });
+	expect(() => renameWorkspacePath({ workspaceId, fromPath: "gone", toPath: "x" })).toThrow(
+		"does not exist",
+	);
+	expect(() => renameWorkspacePath({ workspaceId, fromPath: "docs", toPath: "a.ts" })).toThrow(
+		"already exists",
+	);
+	expect(() => renameWorkspacePath({ workspaceId, fromPath: "docs", toPath: "docs/sub" })).toThrow(
+		"lies inside",
+	);
+	expect(existsSync(join(repo, "docs"))).toBe(true);
+});
+
+test("deleting a file or a directory hands a hidden claim to the trash helper", async () => {
+	createWorkspaceFile({ workspaceId, relativePath: "gone.md", content: "bye\n" });
+	expect(await deleteWorkspacePath({ workspaceId, relativePath: "gone.md" })).toEqual({ ok: true });
+	expect(existsSync(join(repo, "gone.md"))).toBe(false);
+	expect(trashed).toHaveLength(1);
+	expectTrashClaim(trashed[0], "delete");
+
+	setTrashImplementationForTests(async (input) => {
+		const path = typeof input === "string" ? input : (input[0] ?? "");
+		trashed.push(path);
+		rmSync(path, { recursive: true, force: true });
+	});
+	createWorkspaceFolder({ workspaceId, relativePath: "tmpdir" });
+	createWorkspaceFile({ workspaceId, relativePath: "tmpdir/inside.txt", content: "x\n" });
+	await deleteWorkspacePath({ workspaceId, relativePath: "tmpdir" });
+	expect(existsSync(join(repo, "tmpdir"))).toBe(false);
+	expect(trashed).toHaveLength(2);
+	expectTrashClaim(trashed[1], "delete");
+
+	await expect(deleteWorkspacePath({ workspaceId, relativePath: "gone.md" })).rejects.toThrow(
+		"does not exist",
+	);
+});
+
+test("a failed delete keeps the claimed tree at a recovery path", async () => {
+	setTrashImplementationForTests(async () => {
+		throw new Error("trash unavailable");
+	});
+	createWorkspaceFolder({ workspaceId, relativePath: "keep" });
+	createWorkspaceFile({ workspaceId, relativePath: "keep/inside.txt", content: "x\n" });
+	await expect(deleteWorkspacePath({ workspaceId, relativePath: "keep" })).rejects.toThrow(
+		"trash unavailable",
+	);
+	expect(existsSync(join(repo, "keep"))).toBe(false);
+	const recovered = recoveryFiles();
+	expect(recovered).toHaveLength(1);
+	const claim = expectTrashClaim(recovered[0], "recovery");
+	expect(readFileSync(join(claim, "inside.txt"), "utf8")).toBe("x\n");
+});
+
+test("a path that is not inside the workspace root is refused by every mutation", async () => {
+	const outside = [
+		"../outside",
+		"src/../outside",
+		"..",
+		"./x",
+		"a/./b",
+		"a//b",
+		"a/b/",
+		"/abs/path",
+		"",
+		"a\0b",
+	];
+	for (const relativePath of outside) {
+		expect(() => createWorkspaceFile({ workspaceId, relativePath })).toThrow(
+			"is not a path inside the workspace",
+		);
+		expect(() => writeWorkspaceFile({ workspaceId, relativePath, content: "x\n" })).toThrow(
+			"is not a path inside the workspace",
+		);
+		expect(() => createWorkspaceFolder({ workspaceId, relativePath })).toThrow(
+			"is not a path inside the workspace",
+		);
+		expect(() =>
+			renameWorkspacePath({ workspaceId, fromPath: relativePath, toPath: "moved" }),
+		).toThrow("is not a path inside the workspace");
+		expect(() =>
+			renameWorkspacePath({ workspaceId, fromPath: "a.ts", toPath: relativePath }),
+		).toThrow("is not a path inside the workspace");
+		await expect(deleteWorkspacePath({ workspaceId, relativePath })).rejects.toThrow(
+			"is not a path inside the workspace",
+		);
+	}
+	expect(readdirSync(dataDir).some((name) => name.includes("outside"))).toBe(false);
+	expect(readdirSync(repo).some((name) => name.includes("outside") || name === "moved")).toBe(
+		false,
+	);
+});
+
+test("a symlinked directory cannot redirect a write outside the worktree, and .git is not writable", async () => {
+	const outside = join(dataDir, "outside-dir");
+	mkdirSync(outside);
+	symlinkSync(outside, join(repo, "linkdir"));
+	expect(() =>
+		createWorkspaceFile({ workspaceId, relativePath: "linkdir/new.txt", content: "x\n" }),
+	).toThrow("escapes the worktree");
+	expect(existsSync(join(outside, "new.txt"))).toBe(false);
+
+	symlinkSync(join(repo, "a.ts"), join(repo, "link.ts"));
+	expect(() => createWorkspaceFile({ workspaceId, relativePath: "link.ts" })).toThrow(
+		"symbolic link",
+	);
+	expect(() =>
+		writeWorkspaceFile({ workspaceId, relativePath: "link.ts", content: "x\n" }),
+	).toThrow("symbolic link");
+	await expect(deleteWorkspacePath({ workspaceId, relativePath: "link.ts" })).rejects.toMatchObject(
+		{
+			code: "UNSUPPORTED_CHANGE",
+		},
+	);
+	expect(() => createWorkspaceFile({ workspaceId, relativePath: "a.ts/b.md" })).toThrow(
+		"not a directory",
+	);
+	expect(() => createWorkspaceFile({ workspaceId, relativePath: ".git/config" })).toThrow(".git");
 });

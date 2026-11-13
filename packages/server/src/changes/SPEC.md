@@ -2,7 +2,7 @@
 id: submodule-server-changes
 type: submodule-design
 status: active
-title: changes — host-owned revert of a hunk or file, with undo receipts
+title: changes — host-owned worktree mutations: reverted hunks and files with undo receipts, and file/folder CRUD
 parent: module-server
 depends-on: [module-contracts, submodule-server-git, submodule-server-fs]
 tags: [review, git, public-surface-checked]
@@ -13,6 +13,9 @@ tags: [review, git, public-surface-checked]
 The review surface's write path: **revert one hunk or one file's whole change in the worktree**, and undo
 that revert. Git and the worktree are the authority — a mutation names *what the user saw* (the scope, a
 line span per side, a sha-256 per side) and this module re-derives the change from its own reads.
+The same write path also serves the file tree's plain mutations — create a file or folder, save a whole
+file, rename, delete through the trash — because containment, atomic write, and claim-then-trash already
+live here; a second worktree write path elsewhere would fork those invariants.
 The platform decision behind it is [[architecture]] decision #19; the rules below are this module's own.
 
 ## Boundary
@@ -20,13 +23,16 @@ The platform decision behind it is [[architecture]] decision #19; the rules belo
 - **Owns:** `revertChange(params)` and `undoChange(params)` — load awaits (scope resolution plus the
   bounded historical-byte read) followed by a **synchronous verify→write/claim pass**, like the
   `reviews` module's snapshot passes; the per-workspace **receipt ring**; the whole-file semantics table
-  below.
+  below; and the file/folder CRUD pass below, which is the same resolve→check→write shape without the git
+  read.
 - **Public surface (barrel):** `revertChange`, `undoChange`, `RevertChangeParams`, `UndoChangeParams`,
-  `forgetWorkspaceChanges`, `retainReceipts`.
-- **Allowed deps:** `contracts` (`ChangeReceipt`/`RevertTarget`/`LineSpan`/`GitDiffScope`), `git`
-  (`resolveDiffRange`, bounded `readBlobBytesAtAsync` + `readPathModeAtAsync`), `fs` (`resolveWorktreeFile` for containment, `classifyBytes`/
-  `hashBytes`/`decodeText` for identity and textness), `persistence` (workspace lookup), `trash`,
-  `@thinkrail/shared/codedError`, Node `fs`/`crypto`/`path`.
+  `createWorkspaceFile`, `writeWorkspaceFile`, `createWorkspaceFolder`, `renameWorkspacePath`,
+  `deleteWorkspacePath`, `forgetWorkspaceChanges`, `retainReceipts`.
+- **Allowed deps:** `contracts` (`ChangeReceipt`/`RevertTarget`/`LineSpan`/`GitDiffScope`,
+  `isWorkspaceRelativePath`, the `Workspace*Params` shapes, `ResourceMeta`), `git`
+  (`resolveDiffRange`, bounded `readBlobBytesAtAsync` + `readPathModeAtAsync`), `fs` (`resolveWorktreeFile` for containment, `resourceMeta`,
+  `classifyBytes`/`hashBytes`/`decodeText` for identity and textness), `persistence` (workspace lookup),
+  `trash`, `@thinkrail/shared/codedError`, Node `fs`/`crypto`/`path`.
 - **Forbidden:** `host`, `agent`, `reviews`; any write outside `fs`'s contained path; `unlink`.
 
 ## What a revert means
@@ -78,11 +84,46 @@ The platform decision behind it is [[architecture]] decision #19; the rules belo
 - **Writes are atomic**: a temp file in the same directory, the selected mode applied, then `rename`.
   A crash mid-write leaves either the old file or the new one, never a truncated one.
 
+## File and folder operations
+
+- **Containment is re-checked host-side, never trusted from the wire.** The client's own validator,
+  `isWorkspaceRelativePath`, runs again here: no leading `/`, no empty segment, no `.` or `..` segment, no
+  NUL. Then `fs.resolveWorktreeFile(…, { followLeaf: false })` resolves the name inside the worktree root,
+  refuses `.git`, and realpaths **every existing ancestor**, so a symlinked directory cannot redirect the
+  write outside the worktree. The leaf is never followed: a symlink at the target is refused as
+  `UNSUPPORTED_CHANGE` rather than written through, renamed through, or trashed. A parent that exists as a
+  regular file is refused, so `a.ts/b.md` never half-applies.
+- **Missing parents are created recursively**, the same `mkdir -p` a whole-file restore of a reverted
+  deletion uses. Content writes go through the same `writeAtomic` (temp in the same directory, then
+  `rename`), so a create or a save is never a half-written file.
+- **`create` refuses an occupied name; `write` replaces the whole content.** A save carries the complete
+  buffer, never a patch, and keeps an existing file's mode — an executable script stays executable —
+  defaulting to `0644` for a file that did not exist. A `write` onto a directory is refused.
+- **Rename moves the path, not the content**, in one `renameSync`, after refusing a missing source, an
+  occupied destination, and a directory moved inside itself (which the OS reports only as an opaque
+  `EINVAL`). It applies to files and directories alike.
+- **Delete is a trash move, never an `unlink`.** The target is claimed under a hidden
+  `.thinkrail-delete-<ulid>` name in its own directory first, exactly as a whole-file revert claims what it
+  trashes, so a file the agent writes into the real path during the awaited trash call cannot become the
+  object that call removes. If the trash helper fails, the claim is restored to the real path when that path
+  is free, and otherwise preserved as `.thinkrail-recovery-<ulid>` with its absolute path in the thrown
+  error — and because `linkSync` cannot re-link a directory, a failed *directory* trash always takes that
+  recovery path rather than losing the tree.
+- **A name conflict or a missing target is a plain error, not a `CodedError` code.** They are the file
+  tree's own "that name is taken" / "it is gone" message for the client to render, and `WsErrorCode` has no
+  code for them; minting one is a contracts decision, not this module's. What this module does classify
+  keeps its codes: an escaped path or `.git` reach comes from `fs`, a symbolic link is
+  `UNSUPPORTED_CHANGE`.
+- **These mutations take no receipt**, so they are not undoable through `change.undo`: a delete is
+  recoverable from the OS trash, a create or a rename shows up in the tree the watcher reports, and the
+  pane re-reads after each call. If the file tree ever wants an Undo toast here, the ring's `before` bytes
+  already model a rename and a delete; extending it is a further decision, not an implied one.
+
 ## Receipts
 
-- Every mutation answers with a **`ChangeReceipt`** whose id is also the undo token. The host keeps a
+- Every revert and undo answers with a **`ChangeReceipt`** whose id is also the undo token. The host keeps a
   per-workspace ring in memory, each entry holding the path's **`before` bytes and mode** — restoring
-  what the path held *is* the inverse of every operation here, so there is no separate inverse payload to keep in
+  what the path held *is* the inverse of every revert and undo here, so there is no separate inverse payload to keep in
   step. A trashed file is therefore undone by **writing its bytes back**, not by reaching into the
   trash, which no OS offers portably.
 - **The ring is bounded twice** (`retainReceipts`): at most **20 receipts** and at most **64 MiB of held
@@ -113,13 +154,17 @@ The platform decision behind it is [[architecture]] decision #19; the rules belo
 
 ## Get right
 
-- **The client never sends content.** Params carry a scope, spans and hashes; every byte written comes
+- **A revert never carries content.** Its params carry a scope, spans and hashes; every byte written comes
   from this module's own reads. That is what keeps a stale tab from clobbering the agent's work, and it
-  is why the expectation hashes are mandatory rather than advisory.
+  is why the expectation hashes are mandatory rather than advisory. A whole-file save is the exception in
+  the other direction, and the smaller promise: the pane owns its unsaved buffer, so it sends the complete
+  content and last writer wins.
 - **A failed original read is never absence.** `git.readBlobBytesAtAsync` returns `null` only for Git's
   explicit path-absent diagnostic and throws every other failure, matching `git.diffFile`. That
   distinction is load-bearing because an absent original is exactly the input that makes a whole-file
   revert trash the worktree file.
 - **Serialization is the host's job** (`withChangeLock`, a chain per workspace, separate from the review
-  lock — see [[submodule-server-host]]). This module assumes it is not re-entered for one workspace; it
+  lock — see [[submodule-server-host]]), and every worktree mutation this module exports — revert, undo, and
+  the file/folder passes — is routed through it, so a save cannot slip between a revert's verify and its
+  trash call. This module assumes it is not re-entered for one workspace; it
   does not assume the agent is idle.

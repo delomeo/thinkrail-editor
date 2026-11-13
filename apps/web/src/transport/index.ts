@@ -26,4 +26,5 @@ export {
 	supportsToolResponses,
 	supportsTurnChanges,
 	supportsUserThemes,
+	supportsWorkspaceFileMutations,
 } from "./wireTransport";

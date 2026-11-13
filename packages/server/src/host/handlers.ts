@@ -309,7 +309,6 @@ async function sendUserMessage(
 	mode: SendMode,
 	sessionId: string,
 	text: string,
-	clientKey: string,
 	operation: () => Promise<void>,
 ): Promise<{ ok: true }> {
 	const control = isControlMessage(text);
@@ -695,6 +694,26 @@ const handlers: WsHandlers = {
 		revealInFileManager(getWorkspace(params.id).worktreePath);
 		return { ok: true } as const;
 	},
+	"workspace.file.create": (p) => {
+		void ensureWatch(p.workspaceId);
+		return withChangeLock(p.workspaceId, async () => createWorkspaceFile(p));
+	},
+	"workspace.file.write": (p) => {
+		void ensureWatch(p.workspaceId);
+		return withChangeLock(p.workspaceId, async () => writeWorkspaceFile(p));
+	},
+	"workspace.folder.create": (p) => {
+		void ensureWatch(p.workspaceId);
+		return withChangeLock(p.workspaceId, async () => createWorkspaceFolder(p));
+	},
+	"workspace.path.rename": (p) => {
+		void ensureWatch(p.workspaceId);
+		return withChangeLock(p.workspaceId, async () => renameWorkspacePath(p));
+	},
+	"workspace.path.delete": (p) => {
+		void ensureWatch(p.workspaceId);
+		return withChangeLock(p.workspaceId, async () => deleteWorkspacePath(p));
+	},
 	"editor.list": () => listAvailableEditors(),
 	"git.listBranches": (params) => listBranches(params.projectId),
 	"git.prefetch": async (p) => {
@@ -1028,18 +1047,18 @@ const handlers: WsHandlers = {
 		});
 		return created;
 	},
-	"session.prompt": (p, ctx) => {
-		return sendUserMessage("prompt", p.sessionId, p.text, ctx.clientKey, () =>
+	"session.prompt": (p) => {
+		return sendUserMessage("prompt", p.sessionId, p.text, () =>
 			promptSession(p.sessionId, p.text, p.images),
 		);
 	},
-	"session.steer": (p, ctx) => {
-		return sendUserMessage("steer", p.sessionId, p.text, ctx.clientKey, () =>
+	"session.steer": (p) => {
+		return sendUserMessage("steer", p.sessionId, p.text, () =>
 			steerSession(p.sessionId, p.text, p.images),
 		);
 	},
-	"session.followUp": (p, ctx) => {
-		return sendUserMessage("follow_up", p.sessionId, p.text, ctx.clientKey, () =>
+	"session.followUp": (p) => {
+		return sendUserMessage("follow_up", p.sessionId, p.text, () =>
 			followUpSession(p.sessionId, p.text, p.images),
 		);
 	},

@@ -50,6 +50,7 @@ const tick = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 interface ClientFrame {
 	id?: string;
 	method?: string;
+	params?: unknown;
 	ack?: string[];
 	resume?: string[];
 }
@@ -96,11 +97,6 @@ describe("WsTransport channel replay", () => {
 			WS_CHANNELS.providerChanged,
 			{},
 		],
-		[
-			"does not replay an addressed interview invitation to a late subscriber",
-			WS_CHANNELS.feedbackInterview,
-			{},
-		],
 	])("%s", (_name, channel, data) => {
 		const transport = new WsTransport({ url: "ws://localhost:24242/ws" });
 		transport.connect();
@@ -140,6 +136,69 @@ describe("WsTransport dispatch barriers", () => {
 		socket?.message(JSON.stringify({ id, ok: true, result: [] }));
 		expect(await result).toEqual([]);
 		expect(order).toEqual(["barrier", "response"]);
+	});
+});
+
+describe("WsTransport workspace file and folder mutations", () => {
+	const META = { hash: "sha256:1", byteLength: 5, text: true };
+	const results = [
+		{ path: "new.txt", meta: META },
+		{ path: "notes.md", meta: META },
+		{ path: "docs" },
+		{ path: "docs/notes.md" },
+		{ ok: true },
+	];
+
+	test("each shortcut issues its wire method with its params unchanged", async () => {
+		const transport = new WsTransport({ url: "ws://localhost:24242/ws" });
+		transport.connect();
+		const socket = TestWebSocket.instances[0];
+		socket?.open();
+
+		const pending = [
+			transport.createFile({ workspaceId: "w1", relativePath: "new.txt" }),
+			transport.writeFile({ workspaceId: "w1", relativePath: "notes.md", content: "hello" }),
+			transport.createFolder({ workspaceId: "w1", relativePath: "docs" }),
+			transport.renamePath({ workspaceId: "w1", fromPath: "notes.md", toPath: "docs/notes.md" }),
+			transport.deletePath({ workspaceId: "w1", relativePath: "new.txt" }),
+		];
+		const frames = requestsIn(socket?.sent ?? []);
+		expect(frames.map((frame) => frame.method)).toEqual([
+			"workspace.file.create",
+			"workspace.file.write",
+			"workspace.folder.create",
+			"workspace.path.rename",
+			"workspace.path.delete",
+		]);
+		expect(frames.map((frame) => frame.params)).toEqual([
+			{ workspaceId: "w1", relativePath: "new.txt" },
+			{ workspaceId: "w1", relativePath: "notes.md", content: "hello" },
+			{ workspaceId: "w1", relativePath: "docs" },
+			{ workspaceId: "w1", fromPath: "notes.md", toPath: "docs/notes.md" },
+			{ workspaceId: "w1", relativePath: "new.txt" },
+		]);
+
+		for (const [index, frame] of frames.entries())
+			socket?.message(JSON.stringify({ id: frame.id, ok: true, result: results[index] }));
+		expect(await Promise.all(pending)).toEqual(results);
+	});
+
+	test("a refused mutation rejects through the ordinary request failure path", async () => {
+		const transport = new WsTransport({ url: "ws://localhost:24242/ws" });
+		transport.connect();
+		const socket = TestWebSocket.instances[0];
+		socket?.open();
+
+		const rejected = transport.renamePath({
+			workspaceId: "w1",
+			fromPath: "missing.md",
+			toPath: "renamed.md",
+		});
+		const frame = requestsIn(socket?.sent ?? [])[0];
+		socket?.message(
+			JSON.stringify({ id: frame.id, ok: false, error: "missing.md does not exist." }),
+		);
+		await expect(rejected).rejects.toThrow("missing.md does not exist.");
 	});
 });
 

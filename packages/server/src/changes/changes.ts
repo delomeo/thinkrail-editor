@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import type { Stats } from "node:fs";
 import {
 	chmodSync,
 	linkSync,
@@ -9,16 +10,24 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import type {
+	Ack,
 	ChangeReceipt,
 	GitDiffScope,
 	LineSpan,
+	ResourceMeta,
 	RevertTarget,
 	Workspace,
+	WorkspaceFileCreateParams,
+	WorkspaceFileWriteParams,
+	WorkspaceFolderCreateParams,
+	WorkspacePathDeleteParams,
+	WorkspacePathRenameParams,
 } from "@thinkrail/contracts";
+import { isWorkspaceRelativePath } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
-import { classifyBytes, decodeText, hashBytes, resolveWorktreeFile } from "../fs";
+import { classifyBytes, decodeText, hashBytes, resolveWorktreeFile, resourceMeta } from "../fs";
 import { readBlobBytesAtAsync, readPathModeAtAsync, resolveDiffRange } from "../git";
 import { loadWorkspaces } from "../persistence";
 import { trashFile } from "../trash";
@@ -146,8 +155,8 @@ function writeAtomic(abs: string, state: FileState): void {
 	}
 }
 
-function claimForTrash(abs: string): string {
-	const claimed = join(dirname(abs), `.thinkrail-revert-${receiptId()}`);
+function claimForTrash(abs: string, reason = "revert"): string {
+	const claimed = join(dirname(abs), `.thinkrail-${reason}-${receiptId()}`);
 	renameSync(abs, claimed);
 	return claimed;
 }
@@ -381,4 +390,107 @@ export async function undoChange(params: UndoChangeParams): Promise<ChangeReceip
 		after: held.before,
 		...(trashed === undefined ? {} : { trashed }),
 	});
+}
+
+const NEW_FILE_MODE = 0o644;
+
+function lstatOrNull(abs: string): Stats | null {
+	try {
+		return lstatSync(abs);
+	} catch (error) {
+		const code =
+			typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+		if (code === "ENOENT" || code === "ENOTDIR") return null;
+		throw error;
+	}
+}
+
+function targetInWorktree(workspaceId: string, relativePath: string): string {
+	if (!isWorkspaceRelativePath(relativePath)) {
+		throw new Error(`${relativePath} is not a path inside the workspace.`);
+	}
+	const abs = resolveWorktreeFile(workspaceId, relativePath, { followLeaf: false });
+	const parent = lstatOrNull(dirname(abs));
+	if (parent?.isFile()) {
+		throw new Error(`A parent of ${relativePath} is a file, not a directory.`);
+	}
+	return abs;
+}
+
+function assertNoSymbolicLink(stat: Stats, path: string): void {
+	if (stat.isSymbolicLink())
+		unsupported(path, "is a symbolic link, which change mutations do not support.");
+}
+
+function assertNameFree(abs: string, path: string): void {
+	const stat = lstatOrNull(abs);
+	if (stat === null) return;
+	assertNoSymbolicLink(stat, path);
+	throw new Error(`${path} already exists.`);
+}
+
+function writeContainedFile(
+	abs: string,
+	relativePath: string,
+	content: string,
+	mode: number | null,
+): { path: string; meta: ResourceMeta } {
+	const bytes = BYTES.encode(content);
+	writeAtomic(abs, { bytes, mode: mode === null ? NEW_FILE_MODE : mode & 0o777 });
+	return { path: relativePath, meta: resourceMeta(bytes, relativePath) };
+}
+
+export function createWorkspaceFile(params: WorkspaceFileCreateParams): {
+	path: string;
+	meta: ResourceMeta;
+} {
+	const abs = targetInWorktree(params.workspaceId, params.relativePath);
+	assertNameFree(abs, params.relativePath);
+	return writeContainedFile(abs, params.relativePath, params.content ?? "", null);
+}
+
+export function writeWorkspaceFile(params: WorkspaceFileWriteParams): {
+	path: string;
+	meta: ResourceMeta;
+} {
+	const abs = targetInWorktree(params.workspaceId, params.relativePath);
+	const existing = lstatOrNull(abs);
+	if (existing !== null) {
+		assertNoSymbolicLink(existing, params.relativePath);
+		if (!existing.isFile()) throw new Error(`${params.relativePath} is a directory.`);
+	}
+	return writeContainedFile(abs, params.relativePath, params.content, existing?.mode ?? null);
+}
+
+export function createWorkspaceFolder(params: WorkspaceFolderCreateParams): { path: string } {
+	const abs = targetInWorktree(params.workspaceId, params.relativePath);
+	assertNameFree(abs, params.relativePath);
+	mkdirSync(abs, { recursive: true });
+	return { path: params.relativePath };
+}
+
+export function renameWorkspacePath(params: WorkspacePathRenameParams): { path: string } {
+	const from = targetInWorktree(params.workspaceId, params.fromPath);
+	const to = targetInWorktree(params.workspaceId, params.toPath);
+	const source = lstatOrNull(from);
+	if (source === null) throw new Error(`${params.fromPath} does not exist.`);
+	assertNoSymbolicLink(source, params.fromPath);
+	if (source.isDirectory() && (to === from || to.startsWith(`${from}${sep}`))) {
+		throw new Error(`${params.toPath} lies inside ${params.fromPath}.`);
+	}
+	assertNameFree(to, params.toPath);
+	mkdirSync(dirname(to), { recursive: true });
+	renameSync(from, to);
+	return { path: params.toPath };
+}
+
+/** A deletion is a trash move, never an unlink: the claim keeps the window open for an agent write. */
+export async function deleteWorkspacePath(params: WorkspacePathDeleteParams): Promise<Ack> {
+	const abs = targetInWorktree(params.workspaceId, params.relativePath);
+	const stat = lstatOrNull(abs);
+	if (stat === null) throw new Error(`${params.relativePath} does not exist.`);
+	assertNoSymbolicLink(stat, params.relativePath);
+	const claimed = claimForTrash(abs, "delete");
+	await trashClaim(claimed, abs);
+	return { ok: true };
 }

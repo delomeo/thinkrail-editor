@@ -28,6 +28,7 @@ import {
 	TOOL_RESPONSE_PROTOCOL_VERSION,
 	TURN_CHANGES_PROTOCOL_VERSION,
 	USER_THEMES_PROTOCOL_VERSION,
+	WORKSPACE_FILE_MUTATIONS_PROTOCOL_VERSION,
 	WS_CHANNELS,
 } from "@thinkrail/contracts";
 import { isConnectedGeneration, useAppStore } from "../store";
@@ -66,6 +67,12 @@ export function supportsChangeMutations(protocolVersion: number | null): boolean
 
 export function supportsRichAnchors(protocolVersion: number | null): boolean {
 	return protocolVersion !== null && protocolVersion >= REVIEW_RICH_ANCHORS_PROTOCOL_VERSION;
+}
+
+/** Workspace file/folder create, save, rename and delete (`workspace.file.*` / `workspace.path.*`) landed at
+ * v97. An older host serves none of them, so the client must not offer the action. */
+export function supportsWorkspaceFileMutations(protocolVersion: number | null): boolean {
+	return protocolVersion !== null && protocolVersion >= WORKSPACE_FILE_MUTATIONS_PROTOCOL_VERSION;
 }
 
 export function supportsTurnChanges(protocolVersion: number | null): boolean {
