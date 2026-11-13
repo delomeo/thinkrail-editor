@@ -103,3 +103,7 @@ const { port } = await bootHost({
 	analytics: { channel: "dev", build: "source" },
 });
 console.log(`thinkrail host: http://${host}:${port}`);
+console.log(`[LSP] Backend /lsp route registered: ws://${host}:${port}/lsp?language=<id>`);
+console.log(
+	`[TEAM] Backend /team-sync route registered: ws://${host}:${port}/team-sync?room=<code>`,
+);

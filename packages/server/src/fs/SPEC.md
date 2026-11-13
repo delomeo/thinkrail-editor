@@ -16,7 +16,15 @@ bytes are** — the one byte-level classification every content read in the host
 ## Boundary
 
 - **Owns:** `readDir`/`readFile(workspaceId, path)` — every path resolved + contained to the worktree
-  root; `.git` hidden; directories sorted first. `readDir` reports worktree-relative paths with `/`
+  root; `.git` hidden; directories sorted first. A **`readFile`/`resolveWorktreeFile` given an absolute path
+  outside the worktree** is allowed only when the path has the shape of a dependency a resolver reached: a
+  library directory — `node_modules` (including the host's own install: pyright's bundled `typeshed-fallback`,
+  TypeScript's `lib`), `.venv`, `venv`, `site-packages`, `dist-packages` — or an interpreter's own standard
+  library (`<env>/lib/python3.12/…`, where a named conda or virtualenv environment leads and which no list of
+  environment directory names would cover), because that is the only thing outside a worktree a language
+  server names for its user (a stub, a declaration file, a package source the editor jumped to). A relative path still may not
+  escape, and `.git` stays unreadable either way: the host answers for the worktree and for the
+  dependencies a resolver reached, not for the machine. `readDir` reports worktree-relative paths with `/`
   separators on every OS — the same form git status and watch events use — so a browser can match a
   listed node to a changed path (Windows' `relative()` would otherwise yield `src\auth`). (`.thinkrail/` is **not** hidden — it is shown like any
   other dir, so future host-managed content there stays visible; its ephemeral `context/` is kept out of

@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LOGIN_ENV_MARKER } from "@thinkrail/shared/shellEnv";
@@ -16,6 +16,36 @@ export function resolveBunExecutable(env: NodeJS.ProcessEnv = process.env): stri
 
 export function hermeticE2ePath(fakeBinDir: string): string {
 	return [fakeBinDir, "/usr/bin", "/bin", "/usr/sbin", "/sbin"].join(delimiter);
+}
+
+function resolveNodePath(env: NodeJS.ProcessEnv): string | undefined {
+	const name = process.platform === "win32" ? "node.exe" : "node";
+	return [
+		...(env.PATH ?? "")
+			.split(delimiter)
+			.filter(Boolean)
+			.map((directory) => join(directory, name)),
+		join("/usr/bin", name),
+	].find(existsSync);
+}
+
+/** The host's language-server children (pyright, typescript-language-server) are Node programs reached
+ * through their own shebang, so the host's hermetic PATH needs a Node. Point at the one this machine
+ * already resolved instead of widening the PATH to whatever else its directory holds. */
+export function languageServerNodeAvailable(env: NodeJS.ProcessEnv = process.env): boolean {
+	return resolveNodePath(env) !== undefined;
+}
+
+export function writeLanguageServerNode(
+	fakeBinDir: string,
+	env: NodeJS.ProcessEnv = process.env,
+): void {
+	const executable = resolveNodePath(env);
+	if (executable === undefined) return;
+	const target = join(fakeBinDir, process.platform === "win32" ? "node.exe" : "node");
+	rmSync(target, { force: true });
+	if (process.platform === "win32") copyFileSync(executable, target);
+	else symlinkSync(executable, target);
 }
 
 export function hermeticE2eShell(fakeBinDir: string): string {

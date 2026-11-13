@@ -14,7 +14,11 @@ import {
 	waitForCentralTarget,
 	writeE2eAgentSettings,
 } from "./fixtures/centralAgent";
-import { writeFakeGh, writeHermeticE2eShell } from "./fixtures/executables";
+import {
+	writeFakeGh,
+	writeHermeticE2eShell,
+	writeLanguageServerNode,
+} from "./fixtures/executables";
 import {
 	E2E_CENTRAL_BAD_EXTENSION_SOURCE,
 	E2E_CENTRAL_EXTENSION_SOURCE,
@@ -70,6 +74,7 @@ export default function globalSetup(config?: FullConfig): void | Promise<void> {
 			chmodSync(target, 0o755);
 		}
 		writeHermeticE2eShell(E2E_FAKE_BIN_DIR, process.env.SHELL ?? "/bin/bash");
+		writeLanguageServerNode(E2E_FAKE_BIN_DIR);
 		writeFakeGh(E2E_FAKE_BIN_DIR, E2E_GH_SCENARIO, E2E_GH_LOG);
 		copyFileSync(
 			new URL("./fixtures/central-extension.ts.fixture", import.meta.url),

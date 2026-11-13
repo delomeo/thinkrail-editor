@@ -11,7 +11,6 @@ import type {
 	WorkspaceFsChangedPayload,
 } from "@thinkrail/contracts";
 import {
-	FEEDBACK_INTERVIEW_PROTOCOL_VERSION,
 	LOCALES_PROTOCOL_VERSION,
 	MCP_PROTOCOL_VERSION,
 	PROTOCOL_VERSION,
@@ -43,7 +42,6 @@ import {
 	setMcpStatusPublisher,
 	setMcpToolGrantWriter,
 	setModelContextPublisher,
-	setModelListingPublisher,
 	setReviewCommentHandler,
 	setSessionCreatedPublisher,
 	setSessionDeletedPublisher,
@@ -70,7 +68,13 @@ import { forgetOpenBranchReview } from "../branch-review";
 import { watchLocalLocales } from "../locales";
 import { logger, observeLoggedErrors } from "../log";
 import {
+	closeAllLspSessions,
+	closeLspSession,
+	LSP_ROUTE,
+	openLspSession,
+	readLspMessage,
 	resolveServerCommand,
+} from "../lsp";
 import { loadWorkspaces } from "../persistence";
 import {
 	getProjects,
@@ -84,6 +88,13 @@ import {
 } from "../projects";
 import { reanchorWorkspace, resolveCommentFromAgent, setReviewPublisher } from "../reviews";
 import { getConfig, setSettingsPublisher } from "../settings";
+import {
+	closeAllTeamRooms,
+	closeTeamRoom,
+	openTeamRoom,
+	readTeamMessage,
+	TEAM_SYNC_ROUTE,
+} from "../team";
 import {
 	clearTerminalClient,
 	closeAllTerminals,
@@ -187,6 +198,12 @@ export interface RunningServer {
 interface SocketData {
 	clientKey: string;
 	protocolVersion: number;
+	/** Present only on an `/lsp` socket: the language whose server to spawn, the project that server
+	 * analyzes, and the routing marker. */
+	languageId?: string;
+	lspRoot?: string | undefined;
+	/** Present only on a `/team-sync` socket: the room code its yjs frames belong to. */
+	teamRoom?: string;
 }
 
 const CLIENT_REPLAY_RETENTION_MS = 60_000;
@@ -292,6 +309,29 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 					? undefined
 					: new Response("ws upgrade failed", { status: 400 });
 			}
+			if (url.pathname === LSP_ROUTE) {
+				const languageId = url.searchParams.get("language") ?? "";
+				if (resolveServerCommand(languageId) === undefined) {
+					return new Response("no language server for that language", { status: 400 });
+				}
+				const lspRoot = url.searchParams.get("root") ?? undefined;
+				return srv.upgrade(req, {
+					data: { clientKey: "", protocolVersion: 0, languageId, lspRoot },
+				})
+					? undefined
+					: new Response("ws upgrade failed", { status: 400 });
+			}
+			if (url.pathname === TEAM_SYNC_ROUTE || url.pathname.startsWith(`${TEAM_SYNC_ROUTE}/`)) {
+				// `y-websocket` puts the room name in the path; only `?room=` is read, and `team` decides
+				// whether that code is a room at all (a policy close code is what stops a client from
+				// reconnecting a nonsense room forever).
+				const teamRoom = url.searchParams.get("room") ?? "";
+				return srv.upgrade(req, {
+					data: { clientKey: "", protocolVersion: 0, teamRoom },
+				})
+					? undefined
+					: new Response("ws upgrade failed", { status: 400 });
+			}
 			if (url.pathname === "/health") {
 				return new Response("ok");
 			}
@@ -308,6 +348,16 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 		},
 		websocket: {
 			open(ws) {
+				if (ws.data.languageId !== undefined) {
+					if (openLspSession(ws, ws.data.languageId, ws.data.lspRoot) === undefined) {
+						ws.close(1011);
+					}
+					return;
+				}
+				if (ws.data.teamRoom !== undefined) {
+					openTeamRoom(ws, ws.data.teamRoom);
+					return;
+				}
 				const replaced = sockets.get(ws.data.clientKey);
 				sockets.set(ws.data.clientKey, ws);
 				if (replaced && replaced !== ws) replaced.close();
@@ -373,8 +423,11 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 			},
 			async message(ws, message) {
 				if (ws.data.languageId !== undefined) {
+					readLspMessage(ws, message);
 					return;
 				}
+				if (ws.data.teamRoom !== undefined) {
+					readTeamMessage(ws, message);
 					return;
 				}
 				const raw = typeof message === "string" ? message : message.toString();
@@ -453,6 +506,14 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 				resumeClientTerminals(ws.data.clientKey);
 			},
 			close(ws) {
+				if (ws.data.languageId !== undefined) {
+					closeLspSession(ws);
+					return;
+				}
+				if (ws.data.teamRoom !== undefined) {
+					closeTeamRoom(ws);
+					return;
+				}
 				const { clientKey } = ws.data;
 				if (stopping) return;
 				if (sockets.get(clientKey) === ws) {
@@ -887,6 +948,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 		requestReplays.clear();
 		persistTerminalSessions();
 		closeAllTerminals();
+		closeAllLspSessions();
+		closeAllTeamRooms();
 		setSettingsPublisher(null);
 		setModelContextPublisher(null);
 		setLogoutPublisher(() => {});

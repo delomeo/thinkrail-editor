@@ -45,6 +45,31 @@ function assertExistingAncestorContained(root: string, abs: string): void {
 	}
 }
 
+const LIBRARY_DIRECTORIES = new Set([
+	"node_modules",
+	".venv",
+	"venv",
+	"site-packages",
+	"dist-packages",
+]);
+
+/** The standard library a resolved interpreter ships, which is where an environment's own `lib/python3.12`
+ * search path leads. Matched as a shape rather than against a list of environment directories, because a
+ * named conda env, a `~/.virtualenvs` environment and a system interpreter all wear it. */
+const INTERPRETER_LIBRARY = /(^|[/\\])(?:lib|lib64)[/\\]python\d+\.\d+([/\\]|$)/;
+
+/** A language server resolves imports, stubs and declarations from the libraries it runs on, and those live
+ * outside the worktree: the host's own `node_modules` (pyright's bundled typeshed, TypeScript's `lib`), a
+ * project's `.venv` or `site-packages`, the standard library of the interpreter it was pointed at. Only
+ * that shape of path may be read by absolute path. */
+function isLibraryPath(abs: string): boolean {
+	const segments = abs.split(sep);
+	if (segments.includes(".git")) return false;
+	return (
+		segments.some((segment) => LIBRARY_DIRECTORIES.has(segment)) || INTERPRETER_LIBRARY.test(abs)
+	);
+}
+
 function resolveInWorktree(
 	workspaceId: string,
 	path: string,
@@ -53,12 +78,15 @@ function resolveInWorktree(
 	const ws = loadWorkspaces().find((workspace) => workspace.id === workspaceId);
 	if (!ws) throw new Error(`Unknown workspace: ${workspaceId}`);
 
-	const root = ws.worktreePath;
+	const root = resolve(ws.worktreePath);
 	const abs = resolve(root, path);
-	if (!isContained(resolve(root), abs)) throw new Error("Path escapes the worktree");
-	if (isGitMetadataPath(resolve(root), abs)) throw new Error("The .git directory is not readable");
-	assertExistingAncestorContained(root, followLeaf ? abs : dirname(abs));
-	return { root, abs };
+	if (isContained(root, abs)) {
+		if (isGitMetadataPath(root, abs)) throw new Error("The .git directory is not readable");
+		assertExistingAncestorContained(root, followLeaf ? abs : dirname(abs));
+		return { root, abs };
+	}
+	if (isAbsolute(path) && isLibraryPath(abs)) return { root, abs };
+	throw new Error("Path escapes the worktree");
 }
 
 export function readDir(workspaceId: string, path: string): FileNode[] {

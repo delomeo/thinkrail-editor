@@ -31,6 +31,14 @@ export default defineConfig(({ mode }) => {
 					target: `ws://localhost:${hostPort}`,
 					ws: true,
 				},
+				"/lsp": {
+					target: `ws://localhost:${hostPort}`,
+					ws: true,
+				},
+				"/team-sync": {
+					target: `ws://localhost:${hostPort}`,
+					ws: true,
+				},
 				"/files": { target: `http://localhost:${hostPort}` },
 				"/blob": { target: `http://localhost:${hostPort}` },
 			},
