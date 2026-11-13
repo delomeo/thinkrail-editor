@@ -35,6 +35,7 @@ export interface Typography {
 	fontWeights: Record<string, number>;
 	fontSizes: Record<string, number>;
 	lineHeights: Record<string, number>;
+	uiScales: Record<string, number>;
 	letterSpacings: Record<string, string>;
 	rootStyle: StyleRef;
 	codeRow: { fontSize: string; lineHeight: string };
@@ -214,6 +215,7 @@ export function validate(t: Typography): string[] {
 		fontWeights: t.fontWeights,
 		fontSizes: t.fontSizes,
 		lineHeights: t.lineHeights,
+		uiScales: t.uiScales,
 		letterSpacings: t.letterSpacings,
 	};
 	for (const [group, map] of Object.entries(primitives)) {
@@ -261,6 +263,28 @@ export function validate(t: Typography): string[] {
 		if (!(v > 0)) fail(`fontSizes.${id}: must be > 0`);
 	for (const [id, v] of Object.entries(t.lineHeights ?? {}))
 		if (!(v > 0)) fail(`lineHeights.${id}: must be > 0`);
+
+	const identity = Object.keys(t.uiScales ?? {}).filter((id) => (t.uiScales?.[id] ?? 0) === 1);
+	if (identity.length !== 1 || identity[0] !== "default") {
+		fail(
+			'uiScales: exactly one scale may be the identity (1), and it must be named "default" — a document with no `data-ui-scale` renders it',
+		);
+	}
+	for (const [id, v] of Object.entries(t.uiScales ?? {})) {
+		if (id === "default") continue;
+		if (!(v > 1))
+			fail(`uiScales.${id}: a scale must be > 1 (smaller text is not a scale the app offers)`);
+	}
+	const ladders = new Map<string, string>();
+	for (const [id, factor] of Object.entries(t.uiScales ?? {})) {
+		const sizes = Object.keys(t.fontSizes ?? {}).sort(
+			(a, b) => (t.fontSizes?.[a] ?? 0) - (t.fontSizes?.[b] ?? 0),
+		);
+		const ladder = JSON.stringify(sizes.map((size) => scaledFontPx(t, size, factor)));
+		const previous = ladders.get(ladder);
+		if (previous) fail(`uiScales.${id}: scales the ladder identically to uiScales.${previous}`);
+		else ladders.set(ladder, id);
+	}
 
 	for (const group of Object.keys(t.proseSystems ?? {}))
 		if (group in (t.textStyles ?? {}))
@@ -419,8 +443,14 @@ const HEADER = (version: string) => `/*
  * Generator: scripts/generate-typography.ts  ·  regenerate: bun run typography:generate
  * Drift gate: bun run typography:check (fails when this file is stale)
  *
- * Contains every typography value the UI is allowed to use: primitive custom properties, the \`<body>\`
- * base, one class per semantic text style, and one prose system per markdown surface.
+ * Contains every typography value the UI is allowed to use: primitive custom properties, the UI scales,
+ * the \`<body>\` base, one class per semantic text style, and one prose system per markdown surface.
+ *
+ * A UI scale re-issues the size ladder plus the code row at whole pixels in its own \`:root[data-ui-scale]\`
+ * block, which the host selects by setting that attribute on \`<html>\`. Nothing else changes: every size,
+ * every semantic class and every JS consumer keeps reading the same single set of names. The factor beside
+ * them is the multiplier the rest of the interface scales with — the space ladder in \`generated/spacing.css\`
+ * and the row heights in \`tokens.css\` read it, so text and the chrome around it move together.
  *
  * Two cascade layers, both deliberate. The \`<body>\` base sits in \`@layer base\` (after Tailwind's
  * preflight, so it wins there) which means ANY semantic class outranks it. The classes sit in
@@ -443,8 +473,25 @@ function declarations(t: Typography, style: Style, indent = "\t"): string {
 	return lines.map((l) => indent + l).join("\n");
 }
 
-export function codeRowHeight(t: Typography): number {
-	return Math.round(t.fontSizes[t.codeRow.fontSize] * t.lineHeights[t.codeRow.lineHeight]);
+export const uiScaleVariable = (t: Typography) => `--${t.metadata.cssVarPrefix}-ui-scale`;
+
+/** The attribute `<html>` carries the selected scale in. */
+export const UI_SCALE_ATTRIBUTE = "data-ui-scale";
+
+/** A size at a ui scale, always a whole pixel: a half pixel is a different glyph metric from the one Monaco computes. */
+export function scaledFontPx(t: Typography, id: string, factor = 1): number {
+	return Math.round(t.fontSizes[id] * factor);
+}
+
+export function codeRowHeight(t: Typography, factor = 1): number {
+	return Math.round(
+		scaledFontPx(t, t.codeRow.fontSize, factor) * t.lineHeights[t.codeRow.lineHeight],
+	);
+}
+
+/** The scales the app offers. The identity one needs no CSS of its own: a document carries no `data-ui-scale`. */
+export function scaledUiScales(t: Typography): [string, number][] {
+	return Object.entries(t.uiScales ?? {}).filter(([, factor]) => factor !== 1);
 }
 
 export function renderCss(t: Typography): string {
@@ -467,10 +514,28 @@ export function renderCss(t: Typography): string {
 		out.push(`\t${cssVarName(t, "line-height", id)}: ${v};`);
 	out.push("\n\t/* Code row height (px) — font size × line height, rounded to a whole pixel */");
 	out.push(`\t--${t.metadata.cssVarPrefix}-code-row-height: ${codeRowHeight(t)}px;`);
+	out.push(
+		"\n\t/* UI scale — the multiplier the space ladder and the row heights that hold text scale with. */",
+	);
+	out.push(`\t${uiScaleVariable(t)}: 1;`);
 	out.push("\n\t/* Letter spacing */");
 	for (const [id, v] of Object.entries(t.letterSpacings))
 		out.push(`\t${cssVarName(t, "letter-spacing", id)}: ${v};`);
 	out.push("}\n");
+
+	for (const [id, factor] of scaledUiScales(t)) {
+		out.push(
+			`/* UI scale '${id}' (×${factor}) — \`<html ${UI_SCALE_ATTRIBUTE}="${id}">\`. Sizes and the code row are whole pixels, and the code row is re-derived from the scaled code size exactly as Monaco derives it. */`,
+		);
+		out.push(`:root[${UI_SCALE_ATTRIBUTE}="${id}"] {`);
+		out.push(`\t${uiScaleVariable(t)}: ${factor};`);
+		out.push("\n\t/* Font sizes (px) */");
+		for (const size of Object.keys(t.fontSizes))
+			out.push(`\t${cssVarName(t, "font-size", size)}: ${scaledFontPx(t, size, factor)}px;`);
+		out.push("\n\t/* Code row height (px) */");
+		out.push(`\t--${t.metadata.cssVarPrefix}-code-row-height: ${codeRowHeight(t, factor)}px;`);
+		out.push("}\n");
+	}
 
 	out.push(
 		`/* Document base — \`rootStyle\` (${t.rootStyle.$ref}). Any semantic class overrides it. */`,

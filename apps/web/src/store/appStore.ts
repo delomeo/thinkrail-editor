@@ -1,6 +1,7 @@
 import type {
 	AppConfig,
 	ComposerGrowthLimit,
+	EditorSettings,
 	ExtUiRequest,
 	GitDiffScope,
 	HostPlatform,
@@ -36,6 +37,7 @@ import type {
 	ThemeMode,
 	ThinkingLevel,
 	TurnChangeSet,
+	UiScale,
 	UserMessage,
 	UserThemesSnapshot,
 	WireModel,
@@ -55,6 +57,8 @@ import {
 	isSubagentMaxConcurrent,
 	isTerminalWindowsShell,
 	isTodoReviewFixMessage,
+	isUiScale,
+	normalizeEditorSettings,
 	normalizeThemePreference,
 	readToolResponseMessage,
 	sameModel,
@@ -95,6 +99,7 @@ import type {
 	WorkspaceLayoutDocument,
 	WorkspaceViewState,
 } from "../shell/layout";
+import { applyUiScale } from "../styles/uiScale";
 import type { ConnectionStatus } from "../transport";
 import {
 	appendOlderResources,
@@ -1068,6 +1073,8 @@ interface AppState {
 	fileLineWidth: number;
 	chatLineWidthBounded: boolean;
 	fileLineWidthBounded: boolean;
+	uiScale: UiScale;
+	editor: EditorSettings;
 	chatMessageOrder: ChatMessageOrder;
 	streamingResponseMovement: StreamingResponseMovement;
 	defaultModel: WireModel | undefined;
@@ -1448,6 +1455,8 @@ function configPatch(config: AppConfig) {
 			typeof config.fileLineWidthBounded === "boolean"
 				? config.fileLineWidthBounded
 				: DEFAULT_CONFIG.fileLineWidthBounded,
+		uiScale: isUiScale(config.uiScale) ? config.uiScale : DEFAULT_CONFIG.uiScale,
+		editor: normalizeEditorSettings(config.editor),
 		customLayoutPresets: config.customLayoutPresets ?? DEFAULT_CONFIG.customLayoutPresets,
 		defaultModel: config.defaultModel,
 		defaultEffort: config.defaultEffort,
@@ -2327,6 +2336,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 	fileLineWidth: DEFAULT_CONFIG.fileLineWidth,
 	chatLineWidthBounded: DEFAULT_CONFIG.chatLineWidthBounded,
 	fileLineWidthBounded: DEFAULT_CONFIG.fileLineWidthBounded,
+	uiScale: DEFAULT_CONFIG.uiScale,
+	editor: DEFAULT_CONFIG.editor,
 	chatMessageOrder: "oldest-first",
 	streamingResponseMovement: { ...DEFAULT_STREAMING_RESPONSE_MOVEMENT },
 	customLayoutPresets: DEFAULT_CONFIG.customLayoutPresets,
@@ -4370,6 +4381,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 		set({ chatMessageOrder, streamingResponseMovement }),
 	applyConfig: (config) => {
 		const patch = configPatch(config);
+		applyUiScale(patch.uiScale);
 		set(patch);
 	},
 	requestToolView: (workspaceId, tool) =>

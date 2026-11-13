@@ -27,19 +27,25 @@
 	--transition-fast: 120ms ease;
 	--transition-normal: 200ms ease;
 
-	--panel-header-row-height: 28px;
-	--topbar-row-height: 40px;
+	/*
+	 * A row is sized for the text it holds, so these carry the user's UI scale — the generated
+	 * `--tr-ui-scale` factor (1 with no `data-ui-scale` on `<html>`). This is the one reach into type this
+	 * file makes, and it reads the multiplier only: no size, family, weight or line-height is named or aliased
+	 * here.
+	 */
+	--panel-header-row-height: calc(28px * var(--tr-ui-scale, 1));
+	--topbar-row-height: calc(40px * var(--tr-ui-scale, 1));
 	--panel-header-control-height: calc(var(--panel-header-row-height) - var(--space-4));
-	--panel-row-height: 22px;
+	--panel-row-height: calc(22px * var(--tr-ui-scale, 1));
 	--panel-inset: var(--space-8);
 	--tree-indent: var(--space-8);
 	--chat-gutter: var(--space-8);
 }
 
 /*
- * NO typography here — not a family, size, weight, line-height or tracking, and not an alias onto one.
- * `styles/typography.json` is the single source; `generated/typography.css` publishes it as the
- * `--tr-*` custom properties, the `<body>` base and the semantic classes. The three consumers that
+ * NO typography values here — not a family, size, weight, line-height or tracking, and no alias onto one.
+ * `styles/typography.json` is the single source; `generated/typography.css` publishes it as the `--tr-*`
+ * custom properties, the `<body>` base, the semantic classes and the UI scales. The three consumers that
  * cannot use a class (Monaco, xterm, mermaid) read the `--tr-*` tokens directly, so there is exactly
  * one name for each value. Self-hosted variable faces are imported by `styles/generated/fonts.css`.
  *

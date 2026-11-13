@@ -12,6 +12,7 @@
 		"fontWeights",
 		"fontSizes",
 		"lineHeights",
+		"uiScales",
 		"letterSpacings",
 		"rootStyle",
 		"codeRow",
@@ -73,6 +74,19 @@
 		"fontSizes": {
 			"type": "object",
 			"minProperties": 1,
+			"propertyNames": {
+				"$ref": "#/definitions/tokenId"
+			},
+			"additionalProperties": {
+				"type": "number",
+				"exclusiveMinimum": 0
+			}
+		},
+		"uiScales": {
+			"description": "The text scales the user may pick. `default` is the identity (1) and is rendered by carrying no `data-ui-scale`; every other entry is a whole-pixel re-issue of the size ladder plus the code row, generated into its own `:root[data-ui-scale]` block. The setting's closed union lives in `contracts` and a test keeps the two lists identical.",
+			"type": "object",
+			"minProperties": 1,
+			"required": ["default"],
 			"propertyNames": {
 				"$ref": "#/definitions/tokenId"
 			},

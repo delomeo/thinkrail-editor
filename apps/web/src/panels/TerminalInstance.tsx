@@ -50,6 +50,10 @@ function cssColorVar(name: string): string | undefined {
 	return cssColorToHex(cssVar(name) ?? "") || undefined;
 }
 
+function terminalFontSize(): number {
+	return Number.parseFloat(cssVar("--tr-font-size-s13") ?? "") || 13;
+}
+
 const ANSI_TOKENS = [
 	["black", "--ansi-black"],
 	["red", "--ansi-red"],
@@ -122,6 +126,17 @@ export default function TerminalInstance({ tabKey, workspaceId, initialCommand }
 	const [failureMessage, setFailureMessage] = useState<string | null>(null);
 	const [retrying, setRetrying] = useState(false);
 	const [detached, setDetached] = useState(false);
+	const uiScale = useAppStore((state) => state.uiScale);
+	const appliedUiScaleRef = useRef(uiScale);
+	useEffect(() => {
+		const term = termRef.current;
+		if (!term || appliedUiScaleRef.current === uiScale) return;
+		appliedUiScaleRef.current = uiScale;
+		// xterm lays its grid out from its own font options, and the token it reads is the scaled one.
+		term.options.fontSize = terminalFontSize();
+		fitFnRef.current?.();
+	}, [uiScale]);
+
 	const [scrollEdges, setScrollEdges] = useState<QuietScrollEdges>({
 		top: false,
 		right: false,
@@ -140,7 +155,7 @@ export default function TerminalInstance({ tabKey, workspaceId, initialCommand }
 		const term = new XTerm({
 			allowProposedApi: true,
 			cursorBlink: true,
-			fontSize: Number.parseFloat(cssVar("--tr-font-size-s13") ?? "") || 13,
+			fontSize: terminalFontSize(),
 			fontFamily: cssVar("--tr-font-family-code") ?? "monospace",
 			theme: readTheme(),
 			minimumContrastRatio: contrastFloor(),

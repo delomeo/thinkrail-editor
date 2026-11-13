@@ -16,6 +16,7 @@ import { useT } from "@thinkrail/locales/react";
 import { Button, IconButton } from "@thinkrail/ui/button";
 import { IconTooltip } from "@thinkrail/ui/tooltip";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useResourcePreferences } from "../../host";
 import type {
 	ResourceContent,
 	ResourceDiffProps,
@@ -402,11 +403,12 @@ function PierreDiffSurface({
 		}),
 		[ignoreWhitespace, layout, openSelection, review],
 	);
+	const { uiScale } = useResourcePreferences();
 	const { elementRef: rootRef, attach: attachScroller } = useScrollViewState<HTMLDivElement>(
 		viewState,
 		onViewState,
 	);
-	const { virtualizer, metrics, attach } = usePierreVirtualizer(attachScroller);
+	const { virtualizer, metrics, attach } = usePierreVirtualizer(attachScroller, uiScale);
 	usePierreFocus(
 		rootRef,
 		virtualizer,

@@ -71,7 +71,12 @@ const sourceWithoutCommentsPreservingLines = (p: string) =>
 const CSS_RHYTHM_PROP =
 	/(?<![\w-])(gap|row-gap|column-gap|padding(?:-(?:top|right|bottom|left|inline|block)(?:-(?:start|end))?)?|margin(?:-(?:top|right|bottom|left|inline|block)(?:-(?:start|end))?)?)\s*:\s*([^;{}]+)/g;
 
-const CSS_RHYTHM_EXEMPT = new Set(["padding-left: 10px", "margin-left: -10px"]);
+// A guide's `margin-left` cancels the width of its own 1px border; it is paint geometry, not layout rhythm.
+const CSS_RHYTHM_EXEMPT = new Set([
+	"padding-left: 10px",
+	"margin-left: -10px",
+	"margin-left: -1px",
+]);
 
 function isCanonicalCssRhythmValue(value: string): boolean {
 	return value.split(/\s+/).every((part) => {

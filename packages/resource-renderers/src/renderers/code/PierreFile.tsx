@@ -4,6 +4,7 @@ import { RiChatNewLine as MessageSquarePlus } from "@remixicon/react";
 import { useT } from "@thinkrail/locales/react";
 import { IconButton } from "@thinkrail/ui/button";
 import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useResourcePreferences } from "../../host";
 import type { AnchorDraft, ResourceViewProps } from "../../registry";
 import { ReviewComposer } from "../../support/ReviewComposer";
 import { ReviewThreadCard } from "../../support/ReviewThreadCard";
@@ -145,11 +146,12 @@ function PierreFileSurface({
 		}),
 		[openSelection, review],
 	);
+	const { uiScale } = useResourcePreferences();
 	const { elementRef: rootRef, attach: attachScroller } = useScrollViewState<HTMLDivElement>(
 		viewState,
 		onViewState,
 	);
-	const { virtualizer, metrics, attach } = usePierreVirtualizer(attachScroller);
+	const { virtualizer, metrics, attach } = usePierreVirtualizer(attachScroller, uiScale);
 	usePierreFocus(rootRef, virtualizer, [{ review }], placedThreadIds);
 
 	return (

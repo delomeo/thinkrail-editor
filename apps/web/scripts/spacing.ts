@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { loadTypography, scaledUiScales, UI_SCALE_ATTRIBUTE, uiScaleVariable } from "./typography";
 
 export const STYLES_DIR = join(import.meta.dir, "..", "src", "styles");
 export const SOURCE_PATH = join(STYLES_DIR, "spacing.json");
@@ -79,26 +80,38 @@ export function validate(spacing: unknown): string[] {
 }
 
 const HEADER = (version: string) => `/*
- * GENERATED — do not edit. Source: \`src/styles/spacing.json\` (v${version}).
+ * GENERATED — do not edit. Source: \`src/styles/spacing.json\` (v${version}) plus the \`uiScales\` of
+ * \`src/styles/typography.json\`, which owns the one multiplier the whole interface scales with.
  * Regenerate with \`bun run spacing:generate\`; \`spacing:check\` fails when this file is stale.
  * See src/styles/SPACING.md (web-spacing).
  */
 `;
 
+const scaledStep = (step: string, factor: number): string =>
+	`${Math.round(Number(step) * factor)}px`;
+
 export function renderCss(spacing: Spacing): string {
 	const steps = Object.entries(spacing.steps);
+	const scales = loadTypography();
 
 	const rootLines = steps.map(([step, value]) => `\t${spaceVar(step)}: ${value};`);
 
-	return [
-		HEADER(spacing.metadata.version),
-		":root {",
-		...rootLines,
-		"}",
-		"",
+	const out = [HEADER(spacing.metadata.version), ":root {", ...rootLines, "}", ""];
+
+	for (const [id, factor] of scaledUiScales(scales)) {
+		out.push(
+			`/* UI scale '${id}' (×${factor}) — the same \`<html ${UI_SCALE_ATTRIBUTE}="${id}">\` the type ladder is re-issued under. */`,
+		);
+		out.push(`:root[${UI_SCALE_ATTRIBUTE}="${id}"] {`);
+		for (const [step] of steps) out.push(`\t${spaceVar(step)}: ${scaledStep(step, factor)};`);
+		out.push("}", "");
+	}
+
+	out.push(
 		"@theme inline {",
-		"\t--spacing: 1px;",
+		`\t--spacing: calc(1px * var(${uiScaleVariable(scales)}, 1));`,
 		"}",
 		"",
-	].join("\n");
+	);
+	return out.join("\n");
 }

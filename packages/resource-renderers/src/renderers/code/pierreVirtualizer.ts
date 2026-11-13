@@ -4,7 +4,8 @@ import {
 	type VirtualFileMetrics,
 	Virtualizer,
 } from "@pierre/diffs";
-import { type RefCallback, useCallback, useState } from "react";
+import type { UiScale } from "@thinkrail/contracts";
+import { type RefCallback, useCallback, useEffect, useState } from "react";
 
 type ConnectedInstance = Parameters<Virtualizer["connect"]>[1];
 
@@ -58,15 +59,29 @@ function codeLineHeight(): number {
 	return Number.parseFloat(height) || DEFAULT_VIRTUAL_FILE_METRICS.lineHeight;
 }
 
-export function usePierreVirtualizer<T extends HTMLElement>(
-	attachScroller: RefCallback<T>,
-): { virtualizer: PierreVirtualizer; metrics: VirtualFileMetrics; attach: RefCallback<T> } {
-	const [virtualizer] = useState(() => new PierreVirtualizer({ overscrollSize: OVERSCROLL_SIZE }));
-	const [metrics] = useState<VirtualFileMetrics>(() => ({
+function virtualFileMetrics(): VirtualFileMetrics {
+	return {
 		...DEFAULT_VIRTUAL_FILE_METRICS,
 		lineHeight: codeLineHeight(),
 		hunkLineCount: HUNK_LINE_COUNT,
-	}));
+	};
+}
+
+export function usePierreVirtualizer<T extends HTMLElement>(
+	attachScroller: RefCallback<T>,
+	uiScale: UiScale,
+): { virtualizer: PierreVirtualizer; metrics: VirtualFileMetrics; attach: RefCallback<T> } {
+	const [virtualizer] = useState(() => new PierreVirtualizer({ overscrollSize: OVERSCROLL_SIZE }));
+	const [metrics, setMetrics] = useState<VirtualFileMetrics>(virtualFileMetrics);
+	// The window a virtualizer renders starts at `scrollTop / lineHeight`. With the row height of the scale this
+	// surface was opened under it starts below the line actually at the top of the pane, so re-read the token
+	// the scale re-issued.
+	useEffect(() => {
+		const lineHeight = codeLineHeight();
+		setMetrics((current) =>
+			current.lineHeight === lineHeight ? current : { ...current, lineHeight },
+		);
+	}, [uiScale]);
 	const attach = useCallback<RefCallback<T>>(
 		(node) => {
 			if (node) virtualizer.setup(node);

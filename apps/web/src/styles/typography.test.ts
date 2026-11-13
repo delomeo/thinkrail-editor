@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { UI_SCALES } from "@thinkrail/contracts";
 import { normalizeEol } from "../../scripts/generatedFiles";
 import type { Style, StyleRef, Typography } from "../../scripts/typography";
 import {
@@ -16,7 +17,11 @@ import {
 	renderCss,
 	resolveFamily,
 	resolveStyle,
+	STYLES_DIR,
+	scaledFontPx,
 	styleClassName,
+	UI_SCALE_ATTRIBUTE,
+	uiScaleVariable,
 	validate,
 } from "../../scripts/typography";
 
@@ -444,5 +449,75 @@ describe("generated CSS", () => {
 			expect(file).toContain('cssVar("--tr-font-family-code")');
 		}
 		expect(monaco).toContain('cssVar("--tr-line-height-default")');
+	});
+});
+
+describe("ui scales", () => {
+	const codeRatio = () => typography.lineHeights[typography.codeRow.lineHeight];
+	const codeRowAt = (factor: number) =>
+		Math.round(scaledFontPx(typography, typography.codeRow.fontSize, factor) * codeRatio());
+
+	it("offers exactly the scales the settings contract accepts", () => {
+		expect(Object.keys(typography.uiScales)).toEqual([...UI_SCALES]);
+		expect(Object.values(typography.uiScales).every((factor) => factor >= 1)).toBe(true);
+	});
+
+	it("re-issues the whole size ladder and the code row at whole pixels, per scale", () => {
+		for (const [id, factor] of Object.entries(typography.uiScales)) {
+			if (factor === 1) continue;
+			const block = new RegExp(`:root\\[${UI_SCALE_ATTRIBUTE}="${id}"\\] \\{([^}]*)\\}`).exec(
+				GENERATED,
+			);
+			expect(block, `${id}: no generated scale block`).not.toBeNull();
+			expect(block?.[1], `${id}: factor`).toContain(`${uiScaleVariable(typography)}: ${factor};`);
+			for (const size of Object.keys(typography.fontSizes)) {
+				const sizePx = scaledFontPx(typography, size, factor);
+				expect(block?.[1], `${id}.${size}`).toContain(`--tr-font-size-${size}: ${sizePx}px;`);
+				expect(Number.isInteger(sizePx), `${id}.${size}: whole pixels`).toBe(true);
+			}
+			// The row Monaco and Pierre's virtualizer both compute from the scaled code size, rounded the same way.
+			expect(block?.[1], `${id}: code row`).toContain(
+				`--tr-code-row-height: ${codeRowAt(factor)}px;`,
+			);
+		}
+	});
+
+	it("binds the structural row heights and the space ladder to the same scale", () => {
+		const tokens = read(join(SRC, "styles/tokens.css"));
+		for (const height of [
+			"--panel-header-row-height",
+			"--topbar-row-height",
+			"--panel-row-height",
+		]) {
+			expect(tokens, `${height} must scale with the user's text`).toContain(`${height}: calc(`);
+			expect(tokens).toContain(`var(${uiScaleVariable(typography)}, 1)`);
+		}
+		const spacing = normalizeEol(readFileSync(join(STYLES_DIR, "generated/spacing.css"), "utf8"));
+		for (const [id, factor] of Object.entries(typography.uiScales)) {
+			if (factor === 1) continue;
+			const block = new RegExp(`:root\\[${UI_SCALE_ATTRIBUTE}="${id}"\\] \\{([^}]*)\\}`).exec(
+				spacing,
+			);
+			expect(block, `${id}: no generated space block`).not.toBeNull();
+			expect(block?.[1]).toContain("--space-8: ");
+		}
+		expect(spacing).toContain(`--spacing: calc(1px * var(${uiScaleVariable(typography)}, 1));`);
+	});
+
+	it("rejects a source whose identity scale is not the one named default", () => {
+		expect(
+			validate({ ...typography, uiScales: { large: 1.25, bigger: 1.5 } } as Typography),
+		).toContain(
+			'uiScales: exactly one scale may be the identity (1), and it must be named "default" — a document with no `data-ui-scale` renders it',
+		);
+	});
+
+	it("rejects a scale that resolves to a ladder another one already issues", () => {
+		expect(
+			validate({
+				...typography,
+				uiScales: { ...typography.uiScales, near: 1.004 },
+			} as Typography),
+		).toContain("uiScales.near: scales the ladder identically to uiScales.default");
 	});
 });

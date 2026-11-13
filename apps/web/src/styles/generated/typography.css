@@ -1,12 +1,18 @@
 /*
  * GENERATED FILE — DO NOT EDIT.
  *
- * Source:    src/styles/typography.json (v3.1.0)
+ * Source:    src/styles/typography.json (v3.2.0)
  * Generator: scripts/generate-typography.ts  ·  regenerate: bun run typography:generate
  * Drift gate: bun run typography:check (fails when this file is stale)
  *
- * Contains every typography value the UI is allowed to use: primitive custom properties, the `<body>`
- * base, one class per semantic text style, and one prose system per markdown surface.
+ * Contains every typography value the UI is allowed to use: primitive custom properties, the UI scales,
+ * the `<body>` base, one class per semantic text style, and one prose system per markdown surface.
+ *
+ * A UI scale re-issues the size ladder plus the code row at whole pixels in its own `:root[data-ui-scale]`
+ * block, which the host selects by setting that attribute on `<html>`. Nothing else changes: every size,
+ * every semantic class and every JS consumer keeps reading the same single set of names. The factor beside
+ * them is the multiplier the rest of the interface scales with — the space ladder in `generated/spacing.css`
+ * and the row heights in `tokens.css` read it, so text and the chrome around it move together.
  *
  * Two cascade layers, both deliberate. The `<body>` base sits in `@layer base` (after Tailwind's
  * preflight, so it wins there) which means ANY semantic class outranks it. The classes sit in
@@ -54,12 +60,55 @@
 	/* Code row height (px) — font size × line height, rounded to a whole pixel */
 	--tr-code-row-height: 14px;
 
+	/* UI scale — the multiplier the space ladder and the row heights that hold text scale with. */
+	--tr-ui-scale: 1;
+
 	/* Letter spacing */
 	--tr-letter-spacing-normal: normal;
 	--tr-letter-spacing-loose: 0.02em;
 	--tr-letter-spacing-wide: 0.05em;
 	--tr-letter-spacing-widest: 0.1em;
 	--tr-letter-spacing-brand: 0.5px;
+}
+
+/* UI scale 'large' (×1.25) — `<html data-ui-scale="large">`. Sizes and the code row are whole pixels, and the code row is re-derived from the scaled code size exactly as Monaco derives it. */
+:root[data-ui-scale="large"] {
+	--tr-ui-scale: 1.25;
+
+	/* Font sizes (px) */
+	--tr-font-size-s10: 13px;
+	--tr-font-size-s11: 14px;
+	--tr-font-size-s12: 15px;
+	--tr-font-size-s13: 16px;
+	--tr-font-size-s14: 18px;
+	--tr-font-size-s16: 20px;
+	--tr-font-size-s18: 23px;
+	--tr-font-size-s20: 25px;
+	--tr-font-size-s24: 30px;
+	--tr-font-size-s44: 55px;
+
+	/* Code row height (px) */
+	--tr-code-row-height: 18px;
+}
+
+/* UI scale 'xlarge' (×1.5) — `<html data-ui-scale="xlarge">`. Sizes and the code row are whole pixels, and the code row is re-derived from the scaled code size exactly as Monaco derives it. */
+:root[data-ui-scale="xlarge"] {
+	--tr-ui-scale: 1.5;
+
+	/* Font sizes (px) */
+	--tr-font-size-s10: 15px;
+	--tr-font-size-s11: 17px;
+	--tr-font-size-s12: 18px;
+	--tr-font-size-s13: 20px;
+	--tr-font-size-s14: 21px;
+	--tr-font-size-s16: 24px;
+	--tr-font-size-s18: 27px;
+	--tr-font-size-s20: 30px;
+	--tr-font-size-s24: 36px;
+	--tr-font-size-s44: 66px;
+
+	/* Code row height (px) */
+	--tr-code-row-height: 22px;
 }
 
 /* Document base — `rootStyle` (ui.default). Any semantic class overrides it. */

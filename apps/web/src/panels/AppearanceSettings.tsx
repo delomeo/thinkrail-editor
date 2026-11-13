@@ -11,6 +11,8 @@ import {
 	type SystemThemePair,
 	THEME_SYSTEM_PROTOCOL_VERSION,
 	type ThemeId,
+	UI_SCALE_PROTOCOL_VERSION,
+	type UiScale,
 } from "@thinkrail/contracts";
 import type { MessageKey } from "@thinkrail/locales";
 import { type Translator, useT } from "@thinkrail/locales/react";
@@ -49,6 +51,12 @@ import { SETTINGS_ROWS_CONTAINER, SettingsRow } from "./SettingsRow";
 type Appearance = ThemeDescriptor["appearance"];
 type Contrast = ThemeDescriptor["contrast"];
 type ThemeModeOption = "system" | Appearance;
+
+const UI_SCALE_OPTIONS: (SegmentedControlOption<UiScale> & { label: MessageKey })[] = [
+	{ id: "default", label: "common.default", testId: "ui-scale-default" },
+	{ id: "large", label: "settings.appearance.textSize.large", testId: "ui-scale-large" },
+	{ id: "xlarge", label: "settings.appearance.textSize.xlarge", testId: "ui-scale-xlarge" },
+];
 
 const BUNDLED_THEME_LABELS: Readonly<Record<string, MessageKey>> = {
 	dark: "settings.appearance.themeName.dark",
@@ -276,6 +284,9 @@ export function AppearanceSettings() {
 	const contrastAvailable = (contrast: Contrast) =>
 		Object.values(contrastTargets(contrast)).some((target) => target !== null);
 
+	const uiScale = useAppStore((state) => state.uiScale);
+	const uiScaleSupported = (protocolVersion ?? 0) >= UI_SCALE_PROTOCOL_VERSION;
+
 	const modeOptions: SegmentedControlOption<ThemeModeOption>[] = [
 		...(systemSupported
 			? [
@@ -315,13 +326,21 @@ export function AppearanceSettings() {
 		},
 	];
 
-	const update = (config: AppConfigUpdate) => {
+	const update = (
+		config: AppConfigUpdate,
+		failure: string = t("settings.appearance.changeFailed"),
+	) => {
 		if (pending) return;
 		setPending(true);
 		getTransport()
 			.request("settings.update", { config })
-			.catch((err: unknown) => toast.error(errorText(err), t("settings.appearance.changeFailed")))
+			.catch((err: unknown) => toast.error(errorText(err), failure))
 			.finally(() => setPending(false));
+	};
+
+	const selectUiScale = (scale: UiScale) => {
+		if (scale === uiScale) return;
+		update({ uiScale: scale }, t("settings.appearance.textSize.failure"));
 	};
 
 	const selectMode = (mode: ThemeModeOption) => {
@@ -503,6 +522,29 @@ export function AppearanceSettings() {
 					}
 				/>
 			</SettingsGroup>
+			{uiScaleSupported ? (
+				<SettingsGroup title={t("settings.appearance.textGroup")}>
+					<SettingsRow
+						label={t("settings.appearance.textSize")}
+						description={t("settings.appearance.textSize.description")}
+						testId="ui-scale-row"
+						control={
+							<SegmentedControl
+								name="ui-scale"
+								label={t("settings.appearance.textSize")}
+								options={UI_SCALE_OPTIONS.map((option) => ({
+									...option,
+									label: t(option.label),
+								}))}
+								value={uiScale}
+								disabled={pending}
+								onSelect={selectUiScale}
+								testId="ui-scale-control"
+							/>
+						}
+					/>
+				</SettingsGroup>
+			) : null}
 			<CustomThemesGroup
 				snapshot={userThemes}
 				issues={userThemeIssues}
