@@ -5,7 +5,6 @@ status: active
 title: panels — feature views
 parent: module-web
 depends-on: [module-contracts]
-references: [central-integration]
 tags: [ui]
 ---
 
@@ -255,7 +254,8 @@ treatment.
   localStorage under a host-qualified key; hydrated from `main.tsx`, debounced writes plus a `pagehide`
   flush; windows share it, last write wins, no live sync). A **Collapse all folders** `HeaderIconButton` at the
   right of the switch row collapses All, or — only in Changed's Tree view with at least one change —
-  every changed-tree folder (`changeTreeFolderPaths`)), `FileTree`, `SpecsPanel`, `ReviewPanel`,
+  every changed-tree folder (`changeTreeFolderPaths`)); the same cluster also carries **New file** and
+  **New folder** `HeaderIconButton`s, ahead of Collapse all, and the tree's own CRUD is below), `FileTree`, `SpecsPanel`, `ReviewPanel`,
   `ChangesPanel` (the changed files under a fixed **panel-header row** — `h-panel-header-row`
   (`--panel-header-row-height`, currently 28px), shared structural geometry with workbench Group Headers
   and the chat header, not a value pinned here — that says **what** is being diffed via the
@@ -291,7 +291,38 @@ treatment.
   one child and that child is another directory, and the compact row expands/collapses the deepest
   directory as one unit. `ChangesTree` evaluates this against the changed-file tree; `FileTree` resolves
   only visible compact runs through its existing client-side directory reads, so the wire remains a plain
-  immediate-directory listing. The **`+N −M` diff-count badge** is the shared **`DiffStatBadge`**, used
+  immediate-directory listing.
+
+**Creating, renaming and deleting in the Files tree.** Every All-mode row is a
+`@thinkrail/ui/context-menu` trigger whose items are **New file**, **New folder** (in that row's directory
+— for a compact row, the deepest directory it represents, the same identity its expand/collapse and change
+marks use), a separator, **Rename** and **Delete**. The header pair runs one shared entry point,
+`filesTreeState.startTreeCreate(workspaceId, kind)` — the active file's directory, or the workspace root, as
+the target, and the tree's All mode first, because only the All tree can host a name row. `FilesPanel` claims
+`file.new` / `folder.new` through that same function while it is mounted, and the topbar File menu runs it
+where nothing claimed the command ([[submodule-web-shell]] file-menu rule), so **New file** is one action with
+one name row wherever it was asked for. What is being edited is one live value per
+workspace owned by `filesTreeState.ts` (`beginTreeCreate` / `beginTreeRename` / `endTreeEdit` /
+`useTreeEdit`): a create draft `{ parentDir, kind }` or a rename target, never both at once, and deliberately
+**not** part of the persisted `store.filesTreeByWorkspace` — a half-typed name must not come back from a
+reload — ended when the panel unmounts. The edit renders through `TreeRow`'s `edit` + `nameRef`: a rename
+replaces that row's label span with a chrome-less field carrying the row's own typography and geometry
+(prefilled, focused, selected), and a create is one extra row of that same shape at the top of the target
+directory's children, drawn even while that directory's listing is still arriving so a pending name is never
+invisible. Enter or blur submits, Escape cancels, and a typed name that is not a single path segment
+(`treeChildPath` / `treeRenamedPath`, over contracts' `isWorkspaceRelativePath`) submits nothing rather than
+implying a nested path the row cannot mean, and a submit first checks that its draft is still the live edit
+(`selectTreeEdit`), so removing the field — which may itself fire a second blur — cannot submit the same name
+twice. `FileTree` then runs the host mutation (`transport.createFile` /
+`createFolder` / `renamePath` / `deletePath`, i.e. `workspace.file.*` / `workspace.path.*`), a created
+**file** opens in a tab at once through `openTabs.openFileInTab`, a rename reopens the file only if its tab
+was already open, the editor tabs a mutation invalidated are dropped by `openTabs.closeFileTabsFor` (that
+file, and every file tab under a renamed or deleted directory; diff tabs belong to the Changes view's own
+refresh), and a delete needs no confirmation because it is a host trash move the user can undo outside the
+app. Every success reports itself through `store.noteFsChanged` — the same `workspace.fsChanged` path a
+peer's change takes — so each mounted reader re-reads rather than the panel patching its own node list.
+
+  The **`+N −M` diff-count badge** is the shared **`DiffStatBadge`**, used
   only inside Changes: the flat list's file rows, the tree's file rows, and a tree folder's aggregate only
   while it is collapsed (an expanded folder's children already show those counts).
   `ChangesTree`'s tree build + `+/−` aggregation + shared status glyphs live in the pure
@@ -389,8 +420,7 @@ the wizard. **Provider status has one owner**: the store's `providerStatus` snap
 frame — another client's too, even while this client's own login keeps the dialog (hosts that predate a push
 still refresh); a local sign-out or Retry bumps it too. `useProviderStatus`
 re-reads whenever the snapshot is behind, single-flight per version, and `useHasProvider` (connected iff
-`reportHasModelSource`: any standard provider `configured` **or** JetBrains Central connected, so Central
-alone does not trip the warning) derives from it, so the banner, the wizard gate, the connect surfaces and
+`reportHasModelSource`: any standard provider `configured`) derives from it, so the banner, the wizard gate, the connect surfaces and
 Settings never disagree. `useHasProvider` also invalidates once on mount, so returning to Welcome sees a
 credential change the host never pushes (a `pi` CLI login or logout). The banner stays hidden until the first
 answer lands, and a transport error degrades to *not* nagging (unknown or offline ≠ "no provider"). All
@@ -403,11 +433,7 @@ searchable list** of every other unconfigured provider in a scroll area 240px ta
 down to a 160px floor so a short window loses list height before the page scrolls (~40 providers never grow
 the overlay, and filtering never resizes it): subscription (OAuth-capable) providers, then key-only ones, each row the Settings `ProviderRow` with the same
 buttons as Settings: Sign in where the provider supports it and API key where it accepts one, so the copy's
-"or add an API key" holds for every provider. JetBrains AI is not a pi provider but the `central` CLI that configures several, so it keeps the real
-`JetBrainsAiCard` (its Central state machine is never duplicated) — placed like any other option: in **Detected**
-whenever `central` is installed (Connect, sign-in, start-proxy or update, by state), otherwise a plain
-**JetBrains AI** row at the end of the list whose **Set up** expands the card's install guidance. The unfiltered list skips detected providers; a search covers every provider,
-them included. One list rather than separate subscription / API-key buckets, because users look for a provider
+"or add an API key" holds for every provider. The unfiltered list skips detected providers; a search covers every provider. One list rather than separate subscription / API-key buckets, because users look for a provider
 by name, not by auth method. **Detected is earned, never hardcoded.** The surface first asks the host `provider.detect`
 (`detectAccounts`; an older host or a failure counts as nothing found) — the wizard on **Get started**, the
 overlay on open — and keeps its skeleton until it answers, so nothing jumps. Every detected account whose pi
@@ -419,18 +445,17 @@ silent sign-in: the host reports which tools are signed in, and the user still a
 pi's own flow. There is no link out to Settings — the surface already lists every connectable provider. No quota or other global
 settings appear here; the full `ProvidersSettings` stays the power-user surface. Data and login wiring are
 the shared **`useProviderAuth`** hook, which `ProvidersSettings` uses too: the store's provider status snapshot
-(above), re-read once whenever one of them opens — Central's install state and similar host-local facts change
-without a push — `startLogin` / `logout`, and the store-driven
+(above), re-read once whenever one of them opens — host-local provider facts change without a push — `startLogin` / `logout`, and the store-driven
 `LoginDialog` node. Exactly one surface mounts that node: Settings → Providers while Settings is open, otherwise the
 connect surface (`ownsLoginDialog`), so a login never renders two stacked dialogs. **Post-connect handoff:**
 when a provider that was not configured when the surface opened becomes configured — an OAuth / API-key
-login or a Central connect alike; the surface's first report is that baseline, even one whose re-read is still
+login or an external provider change alike; the surface's first report is that baseline, even one whose re-read is still
 in flight (waiting for a current one would absorb a sign-in that lands first), unless it passes
 `configuredAtStart`, which the wizard does as empty (a cold start has no provider), so one connected through
 Settings during the intro or privacy step is still verified on reaching Connect — `ConnectProviderOptions` reports it once through `onConnected`, and only from a current, successful snapshot (never while a re-read is
 in flight or after a failed one, so a provider signed out a moment before Get started is not verified), and the host
 surface decides: `ConnectProviderDialog` clears that provider's finished login (never a newer one), closes itself, and raises one success
-toast naming the provider and the `model.list` count ("JetBrains AI connected — 23 models available"), then
+toast naming the provider and the `model.list` count ("Anthropic connected — 23 models available"), then
 lets Welcome switch its hero to the `ConnectedLine`; the wizard neither toasts nor closes — it verifies in place
 (below). Settings keeps its own behavior (no auto-close),
 because a power user there may be adding a second provider.
@@ -625,8 +650,7 @@ a project picker, the prompt hero, and the reused
   **Interface** (Chat, Appearance, Language, Layout, Terminal) · **System** (Workspaces, Integrations, Extensions,
   Notifications, Privacy, Updates). Integrations keeps section id `github`: today it is the GitHub CLI page
   and it is the home for further integrations. Below `md` the same list is a horizontal scrolling strip without group labels. The
-  Feedback card (`settings-nav-feedback`, “Get 100 credits for a user interview”) belongs to that list at
-  every width, pinned to the rail's bottom at `md`+. The pure nav data — groups, protocol and
+  pure nav data — groups, protocol and
   injected-content gating, and resolving a requested section to an available one (a gated or retired id,
   e.g. an old `review` / `line-width` deep link, falls back to Appearance) — lives in `panels/settingsNav.ts`,
   so the dialog only renders it. `settingsOpen`/`settingsSection` live in the store so the gear AND the
@@ -769,54 +793,14 @@ a project picker, the prompt hero, and the reused
   host notice. Live sections: **`ProvidersSettings`** (the in-app
   provider-auth surface — a header line with an in-page **Refresh** (`providers-refresh`, disabled while a
   status read is in flight) over the groups **Connected** (each row with a **Sign-out only when
-  `canLogout`** — env / models.json auth shows a "Managed" tag instead, since the host can't unset it; a
-  `kind: "central"` row is labelled "JetBrains AI" and its Managed tag points at the JetBrains AI card,
-  which owns that connection), the **JetBrains AI** card, **Subscriptions** (unconfigured `canOAuth`
-  providers) and **Available (N)** (the `canApiKey`-only rest, capped with a "Show N more" expander).
+  `canLogout`** — env / models.json auth shows a "Managed" tag instead, since the host can't unset it),
+  **Subscriptions** (unconfigured `canOAuth` providers) and **Available (N)** (the `canApiKey`-only rest, capped with a "Show N more" expander).
   Every unconfigured provider is one row offering **Sign in** when `canOAuth` and **API key** when
   `canApiKey` — **both routes start `provider.loginStart`**
   (`type` `"oauth"` / `"api_key"`, issue #97) into the same store-driven `auth/LoginDialog` (open the
   URL / paste a code / answer the provider's own key prompts, `provider.loginReply` — no inline key
   field); a "configured outside the app" note for rows with neither flag; and
-  the **`JetBrainsAiCard`** — route Central-supported models through the user's JetBrains subscription while
-  keeping ThinkRail's embedded PI — a state machine over the typed `JbcentralStatus` +
-  `provider.jbcentral*`: absent (official host-OS install guidance + Recheck), outdated — below the host's
-  minimum supported Central (guided Update), invalid/unverifiable version (safe guidance, no native action;
-  a version *above* the minimum is simply ready, never gated), **signed out** — the card
-  **states it and offers only Sign in**: the primary action *replaces* Connect rather than sitting beside it,
-  and on `supported` the signed-out line replaces the "Central is ready" claim instead of annotating it. The
-  rule is that the card never advertises an action that cannot succeed — connecting without credentials
-  fails — so the prerequisite becomes the offer, and Connect returns once the host reports credentials.
-  **Signed out renders as one state, whatever the configuration underneath:** the body says only that Central
-  is signed out — never paired with a "Connected" line that would contradict it — and **Sign in is the only
-  action**, Disconnect withheld along with Connect. Once authenticated, a configured status whose proxy is
-  positively observed stopped likewise replaces the success claim with “Central's proxy is not running” and
-  offers only **Start proxy**; after it starts, Connected + Disconnect return. The prerequisite order is
-  therefore Sign in → Start proxy → ordinary connected controls, never competing actions. Unknown proxy
-  health does not manufacture a demand. A broken session asks for the one thing that resolves its current
-  prerequisite rather than pairing a fix with an unrelated choice or success message.
-  **Signing in is one button, never a menu:** ThinkRail launches Central's flow on the host, and the
-  `central login` command appears *only* where that launch failed — printing it beside a working button makes
-  the user choose between two routes to the same place. Because the flow opens on the **host's** browser, the
-  launched confirmation says so and names Refresh as the next step, since Connect is not on screen yet. The
-  *reactive* guidance survives for the case the probe cannot see: credentials present, action refused
-  anyway —, sign-in required (launch Central sign-in +
-  Retry), ready (Connect), configuring (a Central action or watched candidate rebuild is in flight),
-  connected (the current runtime for new work applied Central; Disconnect), load-failed (the last runtime or
-  boot-time plain fallback remains usable; Retry or Disconnect), and generic action error (Retry/Recheck).
-  There is no restart prompt, affected-chat list, blocked state, or recovery mode. Existing live chats may
-  retain an older runtime—including Central after Disconnect—and the card says its state applies to new chats.
-  Update/connect/disconnect state is host-authoritative and shared across clients; every mutation re-reads
-  `provider.status`, while `provider.changed` invalidations from watched external changes trigger the same
-  re-read plus model-list invalidation. Status reads are request-sequenced so an older response cannot replace
-  a newer watched/action result. Copy never promises only Claude/GPT, never asks for standalone PI,
-  never renders child output/diagnostics/artifact content/paths/proxy data/secrets/raw models, and maps only
-  closed reason codes to ThinkRail-authored text. On protocol v59+, the same card always shows the
-  synchronized **Show quota in top bar** switch and **Refresh every _ seconds** field, in every Central
-  lifecycle state. The flag defaults on; the interval defaults to 30 and accepts whole `1–3600` values.
-  Off disables (but retains) the interval. The field edits locally, commits on blur/Enter, reports invalid
-  range inline, and waits for `settings.changed` rather than installing optimistic authority. Older hosts get
-  neither control. **`GithubSettings`** (the Integrations section's "Local GitHub" group —
+**`GithubSettings`** (the Integrations section's "Local GitHub" group —
   `github.authStatus()` shown as `settings-gh-status[data-connected]`: Connected + login, or a Not connected
   notice naming `gh auth login`; Refresh (`github.refresh`) is offered in both states);
   **`LanguageSettings`** (gated by `LOCALES_PROTOCOL_VERSION`; a store-integrating container over the
@@ -858,7 +842,13 @@ a project picker, the prompt hero, and the reused
   `USER_THEMES_PROTOCOL_VERSION`) gives the copy-a-bundled-file steps with a version-pinned link to
   `dark.theme.json`, the `<dataDir>/themes` folder with **Copy path** / **Open folder** (`themes.reveal`),
   and one warning notice per unusable file (`themes`' issue list). The page reads the catalog and issues
-  through `onThemesChange`, so a dropped file appears in the lists without reopening. An **Editor** group hosts the file
+  through `onThemesChange`, so a dropped file appears in the lists without reopening. A **Text** group holds one
+  **Text size** segmented control (`ui-scale-control`, `ui-scale-default` / `-large` / `-xlarge`) over the
+  `uiScale` setting — the closed `UI_SCALES` union, `default` first, that group hidden below
+  `UI_SCALE_PROTOCOL_VERSION` because an older host cannot store the field — and nothing else: it writes
+  `settings.update` and converges on the broadcast like every other row here, and the sizes themselves belong
+  to the type source ([web-typography](../styles/TYPOGRAPHY.md) → *The user UI scale*), never to this panel.
+  An **Editor** group hosts the file
   `LineWidthControl`); **`LineWidthControl({kind})`** (`LineWidthSettings.tsx`, no page of its own — the
   `chat` control sits in Chat, the `file` one in Appearance → Editor — a 40–240 integer **Line width** field
   on the auto-save input pattern plus an independent host-synchronized **Fit to pane** switch
@@ -975,7 +965,7 @@ a project picker, the prompt hero, and the reused
   **`PrivacySettings`** manages the additional-data preference and
   confirmation together; the event contract belongs to [[submodule-server-analytics]].
   **`AnalyticsConsentDialog`** mounts once through shell after a capable host's unconfirmed config hydrates,
-  held back (with the interview invitation) while the cold-start onboarding wizard may still show or is
+  held back while the cold-start onboarding wizard may still show or is
   showing (`selectOnboardingActive`): a new user meets the product before a privacy question, and sharing
   stays off until the dialog mounts, so holding it never collects without asking. The wizard itself asks at
   its natural seam — **Get started** leads to its own **privacy** step (same `AnalyticsConsentChoice` body,
@@ -996,16 +986,6 @@ a project picker, the prompt hero, and the reused
   decisions survive restarts and change later through Settings. The dialog keeps only the short
   product-usage copy and shared switch; Settings adds the optional outcomes, report dimensions, and
   excluded content. Older hosts retain their legacy privacy control without the new consent dialog.
-  **`FeedbackSettings`** is the final
-  live section after Privacy: the same interview copy as the automatic prompt, stating that completing a
-  user interview about the participant's ThinkRail experience earns 100 bonus credits in Central
-  (JetBrains AI) — credits, never a currency amount — plus a real external anchor to the fixed Google
-  Calendar booking page, opened in a new tab with `noopener noreferrer`. ThinkRail communicates the
-  incentive only; attendance verification, eligibility, and credit fulfillment stay outside the app. This
-  proactive Settings link is always available and deliberately does not call `feedback.respond`, alter
-  automatic-popup state, or claim that booking alone earns credits. Below it, a one-line community blurb and
-  an outline external anchor open the Discord server through the website's stable `thinkrail.ai/discord`
-  redirect (never a raw invite, so a rotated invite needs no app release).
   **`ModelsSettings`** is the **Models** section, visible only at protocol v72 or newer. It re-reads
   `model.default` on open, whenever the live catalog changes (empty included), and after every save — the
   host resolves the saved model and its effort levels against its settled catalog, so a vanished or changed
@@ -1091,13 +1071,9 @@ a project picker, the prompt hero, and the reused
   live in `panels/environmentDraft.ts`; the props-driven `EnvironmentForm` is what tests render. No folder
   picker: `dialog.selectDirectory` is the project-setup picker and records setup analytics.
   `ProvidersSettings`/`McpSettings`/`AppearanceSettings`/`LineWidthControl`/`ChatSettings`/`TemplatesSettings`/
-  `WorkspacesSettings`/`PrivacySettings`/`ModelsSettings`/`FeedbackSettings`/`ExtensionsSettings`/`EnvironmentSettings`, the onboarding
-  `ConnectProviderDialog`/`CreateProjectDialog`/`OnboardingWizard`, and the app-wide **`InterviewPromptDialog`** are the
-  panels-owned **integration pieces** (store + transport). The prompt renders the shared incentive copy and
-  fixed Calendar anchor with `Schedule an interview`, `Not now`, and `Never show again` actions. Primary and
-  middle-button booking activation open Calendar immediately and record `book`; close, Escape, and backdrop record `postpone`; permanent
-  dismissal records `never`. The controlled dialog closes only after the host acks, and reports a rejected
-  action without discarding the still-open choice. `SettingsDialog` receives the Layout section from the
+  `WorkspacesSettings`/`PrivacySettings`/`ModelsSettings`/`ExtensionsSettings`/`EnvironmentSettings` and the onboarding
+  `ConnectProviderDialog`/`CreateProjectDialog`/`OnboardingWizard` are the
+  panels-owned **integration pieces** (store + transport). `SettingsDialog` receives the Layout section from the
   shell composition root so no panel reaches sideways into shell, and the `LoginDialog` stays presentational
   (`auth` module).
 
@@ -1498,7 +1474,7 @@ own section. The kebab menu (`plan-menu`, a
   `VisibleModelsSettings`' rows; `TemplateEditorDialog`, reused by `TemplatesSettings`), `auth` (`LoginDialog`, mounted through
   `useProviderAuth` and by `McpSettings`), `@thinkrail/resource-renderers`, `lib`, `themes` (catalog + generic application contract),
   `contracts`; `@remixicon/react`; and the heavy libs each lazy panel owns (`shiki`,
-  `@xterm/*`) loaded via `import()`.
+  `@xterm/*`, and the `yjs` bindings `teamSpace` owns) loaded via `import()`.
 - **Forbidden:** `server`/`shared`/`pi`; importing `shell`; reaching across unrelated panels.
 
 - **Ship — the branch's delivery state and actions, one implementation for topbar and Plan pane.**
@@ -1860,7 +1836,96 @@ own section. The kebab menu (`plan-menu`, a
   target's label indefinitely. Dropping the superseded read costs nothing: the read that superseded it is
   the one the user is waiting for. Panels are mounted only for the active workspace,
   so scoping is natural. A degraded host watcher pauses automatic invalidations until the next workspace
-  read re-establishes it; editable-file conflict handling waits for `fs.writeFile` (the viewer is read-only today).
+  read re-establishes it; a frame that reaches an **edited buffer defers to the buffer** (the conflict rule below).
+- **An open file tab owns its own unsaved buffer, and `openTabs.ts` is its only writer.** `setTabDraft`
+  records what the user typed in `FileTab.draftContent`, `markTabSaved(content)` records what the host
+  accepted, `revertTabDraft` drops the buffer, and `markTabDiskConflict` records that disk moved under it.
+  `saveFileTab(workspaceId, tabId)` is the whole save — read the tab's own buffer, `workspace.file.write`,
+  `markTabSaved` — so the pane's chord and a confirmed close cannot drift apart on what gets written, and a
+  rejected write leaves the buffer in place for a retry. `findDirtyFileTab(workspaceId, tabId)` is the one
+  reading of "this close has to be asked about": a tab id carries its kind, so the id a layout tab names is
+  enough to find the buffer behind it. **Dirty is derived, never stored**: `isFileTabDirty` is "a draft exists and differs from the content the tab
+  last read", so typing back to the disk text is not a change and no second flag can drift out of step.
+  `content` keeps meaning *what disk said at `loadedTick`* — a buffer never rewrites it in place, which is what
+  makes **discard** a field removal and **overwrite** a host write (`workspace.file.write`). Every write is an
+  in-place `keep` upsert of the tab, so **the first edit of a preview tab is what pins it**: the keep intent is
+  the existing promote path, and the italicized tab stops being one without a second gesture. `activate: false`
+  keeps a keystroke from moving the user's focus. A buffer is runtime-cache tab state: it dies with the tab
+  (a confirmed close, `closeFileTabsFor`, workspace removal) and never reaches a persisted layout document,
+  whose tab projection names its fields explicitly: a half-typed buffer must not come back from a reload, same
+  as `filesTreeState`'s name drafts. Dropping it is what makes **re-opening a discarded file a fresh read**:
+  the tab that held the buffer is gone, so `openReadTab` has no cache to reuse and reads the disk copy. A path
+  mutation that removes a tab still drops its buffer without asking — that removal is the host's, and the
+  rename/delete row is where the file's name was decided.
+- **A change that arrives under an open buffer defers to the buffer.** The whole decision is one pure function
+  the hook and its test share — **`planLiveTabChange(change, tab, preserveLocal)`** →
+  `ignore | advance | conflict | read`, where `advance` is the existing one-batch stamp move and `conflict`
+  means **no read is issued and `draftContent` is untouched**. `FilePane` supplies `preserveLocal` (dirty →
+  flag `hasDiskConflict`, return true), so a peer's or the agent's write never overwrites unsaved text, and a
+  tab the frame did not touch is never asked (`preserveLocal` is consulted only at the point that decides).
+  `hasDiskConflict` is the user's choice, not a lock: **overwrite** is the save followed by `markTabSaved`,
+  **reload** is `revertTabDraft`, which deliberately leaves the tab's stamp where it was so the next frame (or
+  the pane's own `reload()`) catches up. **A save never stamps the tab forward**: the host's own watcher echo
+  lands a moment later and re-reads identical bytes — one redundant read bought to avoid claiming freshness we
+  do not have, so a peer write that slipped between our write and its echo is caught rather than absorbed. The
+  hook's explicit `reload()` is never guarded: it *is* the user asking for disk.
+- **`FilePane` is the surface that types into those buffers.** It renders `RendererView` with
+  `editable` (except on a phone-class viewport, where the existing rule holds: **Pierre owns every
+  phone-class code file** and that surface stays read-only — editing there would swap the file view to Monaco
+  and move phone review commenting with it, which no caller has asked for), and except for a tab whose path
+  is **absolute**, which is a file the language server resolved outside the worktree (a typeshed stub, a
+  declaration file, a package source): it has a real path but no worktree to save back to, so a definition
+  reached there is a read, never an edit, and it never claims the host's file model or a language-server
+  socket. (An absolute `tab.path` is exactly what `projectRelativePath` yields for a path outside the
+  workspace root, which is how such a tab is identified here.) and the buffer as the content a
+  renderer sees (`draftContent ?? content`, so an edit survives a
+  remount and a renderer never invents its own copy of the file), reports whole-text changes through
+  `setTabDraft`, and saves through `openTabs.saveFileTab`. A save is claimed from
+  the `file.save` command while the pane is mounted (`subscribeIdeCommand`, see [[submodule-web-shell]]) and
+  from the renderer's own save keybinding, and the pane runs only when it is the tab the workbench is
+  presenting (`selectAttentionCenterTab`), so two file panes on screen still means `Cmd+S` writes one file.
+  A failed write leaves the draft in place for a retry and reports itself as a toast. The dot
+  that says a tab is dirty is not panel state either: the shell derives the ids from the same
+  `isFileTabDirty` rule and renders it as a tab adornment ([[submodule-web-shell-layout]] tab-ornament rule).
+- **Team Space is explicit sharing, and `teamSpace.ts` is its only client.** The **Team** side tool joins one
+  room code (`/team-sync`, the same `/^[\w-]{3,64}$/` the host answers with a `1008`) and holds that room's
+  `Y.Doc` in the browser: `y-indexeddb` caches the whole shared workbench offline (a closed laptop loses
+  nothing, and a dropped hotspot is a reconnect rather than a reset), `y-websocket` carries the CRDT and
+  awareness frames to the host relay, and awareness carries `{ name, activeFile }` for the **Team radar**.
+  Nothing private is sent: a workspace file joins the room only when `shareTeamFile(path, text)` is called,
+  and a path is refused before it can become a key if it is absolute or escapes the worktree (`teamSharedPath`
+  reuses `canonicalWorkspacePath`). Re-sharing an open file rewrites the *same* `Y.Text` instead of replacing
+  the map entry, because a new one would strand the editors still bound to the old text.
+  `TeamSpacePanel` lists the room's files with **Pull to disk** (one `workspace.file.write`, so a shared file
+  lands in *this* worktree only when asked) and **×**. Opening one goes through `openTabs.openSharedFileInTab`,
+  which fills the tab from the shared document instead of reading the disk and hands the pane a `collaboration`
+  seam the code renderer binds with `y-monaco` — remote text and remote carets arrive live, `setTabDraft` keeps
+  the buffer honest about them, and saving stays the user's own `Cmd+S`. The pane's **Share to Team** button
+  shares `draftContent ?? content` and is offered only while a room is joined.
+- **The room reaches a render through one snapshot value, and joining the room a tab already holds is a no-op.**
+  `TeamSpacePanel` and `FilePane` read it as `useSyncExternalStore(subscribeTeamSpace, teamSpaceSnapshot)` and
+  use the result; they never call a `teamSpace*` getter during render, because the React compiler memoizes a
+  call it cannot tie to a reactive value and then keeps whatever the room was at the component's first render
+  (`externalStoreReads.test.ts` is the gate). Re-joining the current room only re-announces the display name,
+  since destroying a provider whose upgrade has not completed is the aborted handshake the dev proxy reports as
+  an `ECONNRESET` — a StrictMode remount of the auto-join and a second **Join room** click both arrive here.
+- **An explicit Leave is final for this browser.** **Leave room** is a `type="button"` control that also calls
+  `preventDefault()`: the click replaces it with the **Join room** submit button in the same spot, and the
+  browser resolves that click's default action after React has done so, so the click otherwise submits the join
+  form and re-joins the room it just closed — which is what made the control look dead. Leaving drops the saved
+  room code (the display name and the relay override stay), so the panel's mount-time restore cannot bring back
+  a room the user asked to leave, and the host logs the released socket so the same action is visible in its
+  terminal.
+- **An unsaved buffer is argued about before a close, and `fileTabClose.tsx` is where it is argued.** The
+  pane itself never asks: every close a user can ask for arrives at the workbench's `onRequestClose`, and
+  `useFileTabClose` (the file-tab counterpart of `useTerminalClose`) is mounted there once, holding that close
+  as a continuation until `Unsaved changes` is answered — **Save and close** writes through `saveFileTab` and
+  only then runs the close, a refused write keeps the pane, the buffer and the dialog for a retry; **Don't
+  save** runs the close as it was; **Cancel** (the button, Escape, or the overlay) runs nothing. A clean tab,
+  a diff, a chat and every other tab kind are never asked, so the dialog is a step in front of the existing
+  close path and not a second close path. What is *not* intercepted: a preview navigation that replaces a
+  dirty tab in its group's preview slot and a host path mutation that removes one (`closeFileTabsFor`) —
+  asking there would mean asking on every click through the Files tree.
 - **`useWorkspaceSpecs` owns the `spec.graph` read** (one fetcher, one definition of "this file is a spec"):
   the snapshot lands in the store (`specsByWorkspace`), not panel state, because the chat's turn divider
   needs the same answer to route its chips. It is called by **the workbench tool integration**, not by `SpecsPanel` — the
@@ -2150,7 +2215,8 @@ own section. The kebab menu (`plan-menu`, a
 - **Browsing reuses one tab per center group: preview versus keep.** Each workspace view has one local
   preview identity per frame group; its label is italic and carries `data-preview="true"`. Single-clicking a file/spec/change row or
   following a rendered-document/chat artifact link opens into the browser's last-focused destination group
-  as preview. Double-click keeps; clicking an already active preview keeps as the touch path. An explicit
+  as preview. Double-click keeps; clicking an already active preview keeps as the touch path; **editing its
+  buffer keeps it** (the first `setTabDraft`, see the file-tab buffer bullet). An explicit
   Settings/open-as-file action starts kept. Chat and registered plan/document tabs never enter preview.
   The strip and
   context/command surfaces also expose a keyboard-operable Keep Preview command.

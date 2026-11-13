@@ -511,12 +511,7 @@ re-read while a server starts. The state vocabulary and the attention/active pre
   clears it. The
   ephemeral **`notificationPromptOpen`** plus **`openNotificationPrompt()`** / **`closeNotificationPrompt()`**
   is the client-local render flag for the attention-notification permission preface (cadence/snooze and the
-  trigger live in [[submodule-web-notifications]], never the store). The
-  ephemeral **`interviewPromptOpen`** plus
-  **`showInterviewPrompt()`** / **`hideInterviewPrompt()`** is the render projection of the host's addressed
-  invitation; transport opens it idempotently, clears it before each valid welcome's possible redelivery so
-  a host restart cannot leave a stale projection, and the panel hides it after `feedback.respond` is
-  acknowledged. Counts, postponement, dismissal, and client claims never live in the store. The **theme**
+  trigger live in [[submodule-web-notifications]], never the store). The **theme**
   preference state — **`theme: ThemeId`** (the retained opaque fixed choice), **`themeMode: ThemeMode`**,
   and optional **`systemThemePair: SystemThemePair`** — arrives through **`applyConfig(config)`** from
   `server.welcome` / the `settings.changed` broadcast. A welcome from a pre-feature host (or any malformed
@@ -535,16 +530,19 @@ re-read while a server starts. The state vocabulary and the attention/active pre
   **`analyticsEnabled: boolean`**, **`analyticsConsentConfirmed: boolean`**,
   **`notificationsEnabled: boolean`** (the attention-notification master toggle),
   **`subagentsEnabled: boolean`**, **`subagentMaxConcurrent: number`**, **`disabledExtensions: string[]`**
-  (defaulting to `[]` so a pre-v82 host reads as "all on"), **`jbcentralQuotaEnabled: boolean`**,
-  **`jbcentralQuotaRefreshSeconds: number`**, and **`onboardingDismissed: boolean`** (absent ⇒ `false`) ride the same `applyConfig` fold (host-owned, fieldwise
+  (defaulting to `[]` so a pre-v82 host reads as "all on"), **`uiScale: UiScale`**, **`editor: EditorSettings`** (the nested
+  editor-settings bag, normalized through the shared contracts helper so a host that names none reads as the
+  shipped defaults), and **`onboardingDismissed: boolean`** (absent ⇒ `false`) ride the same `applyConfig` fold (host-owned, fieldwise
   defaulted/validated from the contracts helpers so an older or malformed host snapshot cannot poison
-  the store). `terminalWindowsShell` narrows through `isTerminalWindowsShell` and otherwise uses
+  the store). `applyConfig` is also where the selected `uiScale` reaches the document: it writes the attribute
+  the generated scale blocks select on (`styles/uiScale.ts`) before the state lands, so a component that reads a
+  scaled token during render never reads the previous scale. `terminalWindowsShell` narrows through `isTerminalWindowsShell` and otherwise uses
   `DEFAULT_CONFIG.terminalWindowsShell`; `TerminalSettings` consumes both terminal fields, while terminal
   spawning remains server-owned — the Terminal, Line width, Chat, shared Layout catalog, Privacy, provider
   controls, and shell quota read sides. Analytics preference and confirmation default independently to false;
   the store never upgrades a preference to confirmation. A selector combines host capability, hydrated
   configuration, and absent confirmation to drive the one first-launch prompt; `selectOnboardingActive`
-holds it (and the interview invitation) while the client-local **`onboardingWizard`** gate
+holds it while the client-local **`onboardingWizard`** gate
 (`pending | shown | hidden`, set by Welcome through `setOnboardingWizard`) is shown — including its done
 screen, after `onboardingDismissed` is already persisted, until a project opens — or still pending on a
 cold-start-shaped store (capable host, not dismissed, no open or recent projects). Project Home reads the same
@@ -631,7 +629,14 @@ components. The **Skills-reload badge** rides the same tick without a separate s
   skills is not flagged; a reload clears only its own). `updateFileTabContent` writes content, `ResourceMeta`,
   and the captured fs tick together. Its diff twin, `updateDiffTabContent`, additionally writes both sides'
   metadata, the resolved original oid, and `loadedTarget`; a `DiffTab` is stale in either the fs-tick or review-target
-  dimension, and neither identity may outlive the content it describes. The transient
+  dimension, and neither identity may outlive the content it describes. **`FileTab` also carries the user's
+  unsaved buffer** (`draftContent`) and the claim that disk moved under it (`hasDiskConflict`). **Dirty is
+  derived** (`isFileTabDirty`: a draft exists and differs from the tab's last-read `content`), never a stored
+  flag, and `content` keeps meaning *what disk said at `loadedTick`*. `panels`' `openTabs.ts` is the only
+  writer, each write an in-place `keep` upsert of the tab — the same path that promotes a preview tab on the
+  first edit — and `updateFileTabContent` never touches either field, so a live re-read cannot erase an edit.
+  Both are runtime-cache tab state: a layout document's tab projection names its fields explicitly, so neither
+  is persisted and both die with the tab. The transient
   A **`reveal-tool` `LayoutIntent`** is the arrangement-agnostic request to reveal/focus a singleton
   side tool; the shell layout integration consumes it and resolves the tool's current saved location.
   **`changesRequest`** and **`specRequest`** add an optional path/item target to that reveal and carry a

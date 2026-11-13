@@ -362,9 +362,7 @@ convergence with draft invalidation, sanitized read/write failures with Retry, m
 and pre-v76 hiding.
 
 General and private-restart fixtures seed additional analytics off with consent already confirmed, so
-unrelated scenarios stay unblocked. They also seed the automatic interview invitation as permanently
-dismissed: the serial agent lane intentionally accumulates accepted prompts across scenarios, while dedicated
-feedback coverage injects and asserts the addressed invitation channel directly. The cold-start onboarding
+unrelated scenarios stay unblocked. The cold-start onboarding
 wizard is likewise seeded dismissed (`onboardingDismissed: true`, in the config file and again over the
 settings wire, since the host may have loaded its config first), and only `onboarding.spec.ts` re-arms it
 over the settings wire, restoring it afterwards. The wizard gate decides once per page load, so that spec's
@@ -410,7 +408,11 @@ fixture answers the probe (recognized by shared's `LOGIN_ENV_MARKER`) with that 
 PATH the host was given, and otherwise execs the runner's real shell, keeping terminal specs on a genuine
 shell. Without it the probe would merge developer-machine directories into the hermetic PATH (and import the
 developer's login environment) and a spec could reach a real `central`, `pi`, or editor. (The `.bun/bin` directory name is historical: it once marked the PATH as complete to a short-circuit
-that no longer exists.) Folder selection comes from one picker control file across the source,
+that no longer exists.) A `node` link into that same directory is written from the runner's own resolved
+Node when one exists: the host's language-server children (`server` `lsp` — pyright, typescript-language-server)
+are Node programs reached through their own shebang, and the editor specs that exercise go-to-definition need
+them. Only the one executable is added, so the directory does not widen the host's PATH to whatever else
+that Node install ships with. Folder selection comes from one picker control file across the source,
 binary, and desktop hosts: plain content returns a path and an `error:<message>` directive forces a
 platform-independent failure. The source host also receives empty `DISPLAY` and `WAYLAND_DISPLAY`, so a
 broken control cannot reach a developer's Linux display; native Linux preflight stays unit-covered. Port

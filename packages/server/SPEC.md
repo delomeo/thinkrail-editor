@@ -52,7 +52,12 @@ e2e).
   `@earendil-works/pi-coding-agent` + `@earendil-works/pi-ai` (runtime), `extension-api` (`./server` types)
   + every `thinkrail-extensions/*` **server subpath only** (the registry's composition edge; the host no
   longer depends directly on a pi package an extension owns), `pino` + its pretty/rolling
-  destinations (host diagnostics), `jsonc-parser` (targeted shared Pi configuration edits), Bun/Node.
+  destinations (host diagnostics), `jsonc-parser` (targeted shared Pi configuration edits), `vscode-ws-jsonrpc`
+  (+ the `vscode-jsonrpc` framing it carries) and `pyright` + `typescript-language-server` + `typescript`
+  (the `/lsp` bridge and the children it spawns; `typescript` is a runtime dep because
+  `typescript-language-server` reaches it through `require.resolve("typescript")` and ships no copy of its own),
+  Bun/Node — `lsp` rides `Bun.serve`'s own upgrade, so no `ws` package; `yjs` + `y-protocols` + `lib0`
+  (the `/team-sync` room relay, which relays frames and needs no WebSocket package of its own either).
 - **Deployment obligation:** product behavior lives in the owning server feature module and is composed by
   `host`; launchers only supply boot options and packaged resources. When a demonstrated second environment
   needs a different implementation, the owning feature defines one narrow injected port rather than a
@@ -92,12 +97,13 @@ internals**. The edges between them are owned here (see the dependency graph), n
 | `reviews` | draft review comments on files/diffs: store + anchoring + context-package render | [reviews/SPEC.md](src/reviews/SPEC.md) |
 | `watch` | per-worktree fs watcher → debounced `workspace.fsChanged` invalidation push | [watch/SPEC.md](src/watch/SPEC.md) |
 | `terminal` | workspace-scoped `bun-pty` terminals | [terminal/SPEC.md](src/terminal/SPEC.md) |
+| `lsp` | `/lsp` WebSocket ↔ stdio pipe to a spawned language server (pyright, typescript-language-server) | [lsp/SPEC.md](src/lsp/SPEC.md) |
+| `team` | `/team-sync` room relay + `<dataDir>/team-space/<room>.yjs` snapshot for the shared Team Space workbench | [team/SPEC.md](src/team/SPEC.md) |
 | `agent` | in-process pi sessions + current/retained runtime generations + one-shot completions | [agent/SPEC.md](src/agent/SPEC.md) |
 | `extensions` | the server registry of ThinkRail extensions (`@thinkrail/ext-*/server`): ordered descriptors + public specifiers, inline flattening, owner-scoped skill resolution | [extensions/SPEC.md](src/extensions/SPEC.md) |
 | `auth` | provider status/login plus native JetBrains Central lifecycle and quota orchestration | [auth/SPEC.md](src/auth/SPEC.md) |
 | `assist` | ad-hoc one-shot tasks (plan summaries, PR descriptions) on a cheap model, best-effort | [assist/SPEC.md](src/assist/SPEC.md) |
 | `analytics` | always-on basic events + sanitized error reports, and preference-controlled optional insights → PostHog sink (privacy contract in its spec) | [analytics/SPEC.md](src/analytics/SPEC.md) |
-| `feedback` | host-scoped usage count + addressed product-interview invitation lifecycle | [feedback/SPEC.md](src/feedback/SPEC.md) |
 | `dialog` | the host's native folder picker | [dialog/SPEC.md](src/dialog/SPEC.md) |
 | `editors` | detect installed editors/IDEs, launch one at a worktree, reveal a worktree in the file manager | [editors/SPEC.md](src/editors/SPEC.md) |
 | `history` | prompt recall + conversation search over pi's session files | [history/SPEC.md](src/history/SPEC.md) |
@@ -111,7 +117,7 @@ the host from env via `bootHost` for dev/e2e.
 
 `host` is the **only composition root** — it wires each feature's handlers into the WS registry.
 
-- `host` → `projects`, `workspaces`, `git`, `github`, `branch-review`, `pr`, `fs`, `spec`, `todos`, `reviews`, `changes`, `turns`, `watch`, `terminal`, `dialog`, `editors`, `agent`, `auth`, `assist`, `settings`, `environment`, `locales`, `themes`, `history`, `templates`, `analytics`, `feedback`, `log`, `persistence` (`dataDir`, for the crash report)
+- `host` → `projects`, `workspaces`, `git`, `github`, `branch-review`, `pr`, `fs`, `spec`, `todos`, `reviews`, `changes`, `turns`, `watch`, `terminal`, `lsp`, `team`, `dialog`, `editors`, `agent`, `auth`, `assist`, `settings`, `environment`, `locales`, `themes`, `history`, `templates`, `analytics`, `feedback`, `log`, `persistence` (`dataDir`, for the crash report)
 - `workspaces` → `projects`, `git`, `persistence`
 - `branch-review` → `git`, `subprocess`
 - `pr` → `workspaces`, `git`, `todos`, `branch-review` (provider detection + gh-output parsing + the shared CLI runner), `github` (`ghSetupProblem` — the named compare-fallback reason)
@@ -136,7 +142,7 @@ the host from env via `bootHost` for dev/e2e.
   `host` installs (`agent.setReviewCommentHandler` → `reviews.resolveCommentFromAgent`)
 - `environment` → `persistence` (`environment.json`), `log` (+ `@thinkrail/shared/shellEnv` for the launch keys and pi's `getAgentDir`, external); never `settings`
 - `assist` → `agent` (the one-shot completion primitive)
-- `auth` → `agent` (the current runtime/auth facade plus candidate prepare/activate; one-way, `agent` never imports `auth`)
+- `auth` → `agent` (the current runtime/auth facade; one-way, `agent` never imports `auth`)
 - `agent` → `log`, `persistence` (`dataDir` for delegation plus session lifecycle/receipt load-save operations),
   `trash` (a chat delete's recoverable transcript move), `resourceHistory` (records its owners' lifecycle and reads
   what they no longer hold), `extensions` (the registry's flattened parent and
@@ -146,6 +152,11 @@ the host from env via `bootHost` for dev/e2e.
   (build-only) also reads it to stage the extensions' skill roots
 - `resourceHistory` → `persistence` (`dataDir`), `log`
 - `persistence`, `dialog`, `history`, `templates`, `subprocess`, `trash` → (leaves)
+- `lsp` → `log` only (the cross-cutting edge): it is driven **by** `host`'s websocket handlers through its
+  own `LspSocket` shape, so it never imports `host`, and it owns no LSP semantics — see its spec.
+- `team` → `log`, `persistence` (`dataDir`, for the room snapshots) + `yjs`/`y-protocols`/`lib0` (external):
+  driven **by** `host`'s websocket handlers through its own `TeamSocket` shape, so it never imports `host`,
+  and it never reads or writes a worktree file — see its spec.
 
 Rules: features never import `host`, and never each other except the edges above. The graph is acyclic.
 `agent`'s WS surface (`session.*` + `pi.event` forwarding) attaches to `host`. Features that push on their

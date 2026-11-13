@@ -20,12 +20,12 @@ they are *generators*: they use `node:fs` and `node:path`, which must never reac
 
 | File | Role |
 |---|---|
-| `typography.ts` | the library: load → validate → render CSS. The **only** place CSS custom-property names, semantic class names and prose root class names are derived. |
+| `typography.ts` | the library: load → validate → render CSS. The **only** place CSS custom-property names, semantic class names, prose root class names and the UI scale blocks (`--tr-ui-scale`, `data-ui-scale`) are derived. |
 | `generate-typography.ts` | CLI. Writes `src/styles/generated/typography.css` and `src/styles/generated/fonts.css` (the `@import`s for the self-hosted faces); `--check` fails instead of writing when a committed file is stale. |
 | `validate-typography.ts` | CLI. Validates `src/styles/typography.json` and prints a summary. The enforced gate. |
 | `colors.ts` | the library: load → validate → render. The **only** place a colour derivation (a palette alias or an alpha step) is written. |
 | `generate-colors.ts` | CLI. Writes `src/styles/generated/colors.css` — the roles, the appearance-level effects, and the Tailwind map; `--check` fails when it is stale. |
-| `spacing.ts` | the library: load → validate → render. It enforces step identity and is the only place the generated spacing-CSS shape and `--spacing: 1px` (number = px) base are derived; the step lengths live only in `spacing.json`. |
+| `spacing.ts` | the library: load → validate → render. It enforces step identity and is the only place the generated spacing-CSS shape, the scaled `--spacing` base (number = px) and each UI scale's re-issue of the steps are derived; the step lengths live only in `spacing.json`, the scale factors only in `typography.json`. |
 | `spacing.test.ts` | Pins the spacing source validator's closed root/metadata shapes and value types against the schema. |
 | `generate-spacing.ts` | CLI. Writes `src/styles/generated/spacing.css` — the `--space-<n>` tokens + the Tailwind base; `--check` fails when it is stale. |
 | `providerGlyphs.ts` | the library: the **only** pi-provider-id → vendor-mark mapping, plus the reader that accepts a vendored SVG only when it is a 24×24, path-only, `currentColor` glyph (layered marks keep their per-path opacity) and the renderer that shares one constant per mark. Source set: the dev-only `@lobehub/icons-static-svg` (MIT; the marks stay their owners' trademarks). |
@@ -89,6 +89,10 @@ in agreement about the same functions.
 - **The JSON is the only source.** `typography.ts` derives every emitted name mechanically, so a new
   token, style or prose system needs no change here. If adding a style requires editing this directory,
   the naming rule was wrong.
+- **One cross-source read, and it is the user's scale.** `spacing.ts` reads `uiScales` through
+  `typography.ts`, because a scale that moved the type ladder but not the rhythm around it is the drift this
+  layer exists to remove. It is one-directional (spacing never feeds typography), so `typography:check` and
+  `spacing:check` both stay usable as drift gates on their own outputs.
 - **Generation is deterministic and idempotent.** Same input → byte-identical output; no clock, no
   randomness, no environment reads. That is what makes `--check` a usable drift gate in pre-commit,
   `apps/web build` and CI. Line endings are the one exception, because they belong to the checkout

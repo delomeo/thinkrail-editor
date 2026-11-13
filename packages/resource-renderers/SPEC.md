@@ -91,6 +91,15 @@ A host wraps renderers in `ResourceHostProvider` with one static `ResourceHost` 
   watch, so a swap between a preload and the first editor still re-themes, and N open editors cost one
   refresh per swap. A grammar loads on its language's first model or on a warm for its path.
 - `bytesUrl(workspaceId, path, oid?)` — the host byte route for images, PDFs and relative markdown assets.
+- `filePath(workspaceId, path)` — the absolute path that workspace file has on the machine that reads it, or
+  `undefined` when this host cannot name one. A language server (server `lsp`) is the reason to ask: it
+  resolves a workspace, imports and types from a `file://` document URI, so it answers only about a document
+  it can locate. The host joins its worktree root with the wire's relative path and owns that form.
+- `workspacePath(workspaceId)` — that workspace's own root directory, in the same form, or `undefined`. A
+  language server resolves a project's **installed** libraries from the environment beside the project, so a
+  document's own directory is not enough to answer `import cv2`: the root travels as the `root` query of the
+  `/lsp` socket (server `lsp` spawns its child there and finds that project's Python environment from it)
+  and as the `rootUri`/`rootPath`/`workspaceFolders` of `initialize`.
 - `openFile(workspaceId, path, { keep? })` and `openComparison(workspaceId, before, path)` — navigation for
   relative document links (preview) and explicit Open-in-tab actions (keep).
 - `readFile(workspaceId, path)` and `subscribeFileChanges(workspaceId, onChange)` — `ResourcePreview`'s
@@ -104,8 +113,11 @@ A host wraps renderers in `ResourceHostProvider` with one static `ResourceHost` 
 Build the value once (the app does at module scope). Its functions are memo inputs: `documentComponents`
 defines its link and image components per call, so a new `bytesUrl`/`openFile` identity would remount every
 link and image in open previews and notebook cells. The reader's line-width preference
-(`fileLineWidth` / `fileLineWidthBounded`) arrives separately through `ResourcePreferencesProvider`; only
-`MonacoEditor` reads it, so a width change re-renders nothing else. The phone class arrives the same way
+(`fileLineWidth` / `fileLineWidthBounded`), the document's current `uiScale`, and the host's nested `editor`
+settings bag arrive separately through
+`ResourcePreferencesProvider`; `MonacoEditor` and the two Pierre surfaces read them, because each takes its
+font size and row height as JS metrics read from the generated tokens — without a render on a scale change a
+code surface would keep the metrics of the scale it was opened under while the text around it moved. The phone class arrives the same way
 through `ResourceEnvironmentProvider` (the registry's `ResourceEnvironment`, `{ mobile }`); only
 `ResourcePreview` reads it — panes resolve with their own viewport reading — so a viewport flip re-renders
 only the previews that must re-resolve their renderer. A subtree that belongs to one workspace and chat
@@ -183,8 +195,8 @@ keeps it.
 - **Monaco runs its vendored DOMPurify.** `monaco-editor` sanitizes hovers and rendered markdown with its own
   copy under `esm/vs/base/browser/dompurify`, so only a Monaco upgrade changes the sanitizer that runs; the
   `dompurify` it declares is never imported. The vendored copy predates several DOMPurify advisories. The
-  exposure is accepted: this reader has no language services, hover providers or decoration
-  hover messages, so hover markdown is Monaco's own, and it calls DOMPurify with hooks and
+  exposure is accepted: the only markdown that reaches it is Monaco's own and, since the `/lsp` bridge, a
+  language server's hover text, and it calls DOMPurify with hooks and
   `RETURN_DOM_FRAGMENT`, never `IN_PLACE` or `SAFE_FOR_TEMPLATES`.
   Monaco 0.57 vendors 3.4.15. The root `overrides.dompurify` pin only keeps the declared copy on Mermaid's
   patched version (Mermaid does import it); it is not a Monaco fix. Re-check the vendored banner on every
@@ -196,7 +208,12 @@ keeps it.
   `./react` for its UI strings — `useT`, `<T>`, `localeOf`), `@thinkrail/ui` primitives, React, and the renderer
   engines (`monaco-editor`, `@shikijs/monaco`, `shiki`, `@pierre/diffs`, `pdfjs-dist`,
   `react-markdown`, `rehype-raw`, `rehype-sanitize`, `diff`, `jsondiffpatch`, `react-virtuoso`,
-  `node-htmldiff`).
+  `node-htmldiff`). Language services are framed here, in plain TypeScript: no language-client package and
+  no second Monaco core. One core is mounted, and `monaco-editor` is it — `@codingame/monaco-vscode-api`'
+  VS Code fork replaces `monaco-editor`, it does not coexist with it, and its `exports` map answers
+  `./features/*` with an empty module, so the per-feature `monaco-editor/features/<name>/register.js`
+  imports below have no equivalent there. `vscode-ws-jsonrpc` belongs to `server` `lsp`, which fronts a
+  stdio child; a browser has only a WebSocket to frame.
 - **Forbidden:** the web app (store, transport, panels, chat, shell, lib, themes), extensions, the server, and
   pi packages. `scripts/check-module-boundaries.ts` enforces it; only `apps/web` consumes the package today.
 - UI text follows [[architecture]] Decision 23: renderer chrome renders through `useT()`'s translator
@@ -238,7 +255,10 @@ make its thread unplaced. A renderer with no anchor capability for its intent ma
 pane keeps those threads in its unplaced strip instead. The file-view edit surface is part of the same
 props: `editable`, `onChange(content)` and `onSave()` ask a renderer for an editable view and take its
 whole text back on change; a renderer whose surface cannot edit hands the request to one that can, and no
-renderer writes the file itself.
+renderer writes the file itself. `collaboration` is the same host-owned editing question asked a step
+differently: the host supplies an `attach(editor, model)` seam for a file it is editing *with* other people,
+the renderer attaches its model to it on mount and disposes it on unmount, and while a surface is attached
+the props' own text no longer rewrites that model — the shared document does.
 
 `HunkActions` is the mutation boundary between a diff engine and its pane. A renderer reports only the
 engine-neutral original/modified `LineSpan` pair it computed: `revert` applies that one block,
@@ -600,25 +620,72 @@ content's own height.
   The React Compiler memoizes `MonacoEditor`'s options on width, bounded and path, and the editor calls
   `updateOptions` only when that object changes; the typography and spacing tokens the options read are
   static generated CSS (themes set only colours).
+- **Indentation guides are the renderer's own, coloured by nesting depth.** `indentRainbow.ts` owns them:
+  `attachIndentRainbow` reads the model's resolved `tabSize` (a tab is a whole step, a space one column),
+  walks only the lines inside `getVisibleRanges()` plus a 30-line buffer, and installs one
+  `createDecorationsCollection` decoration per indent step over that step's own leading whitespace, classed
+  `tr-indent-step-<step % 4>`. The cursor's line carries the `tr-indent-step-active-<n>` companion, declared
+  after the base rules so it wins without a specificity contest. The cycle colours and the three alphas arrive
+  as custom properties written on the editor's own DOM node (`--tr-indent-line-<n>`,
+  `--tr-indent-line-active-<n>`, `--tr-indent-bg-<n>`) beside one injected `style[data-indent-rainbow]`
+  holding the rules, so the palette stays data: a settings change repaints variables and re-classes
+  decorations rather than redefining a Monaco theme. A guide's `border-left` is cancelled by an equal negative
+  margin, so a drawn line never shifts the code it sits beside — Monaco's own hit test maps columns from font
+  metrics, not from the DOM. Every trigger (content, scroll, model options, cursor, model language, settings
+  change) funnels into one scheduled animation frame. `fileEditorOptions` sets `guides: { indentation: false }`
+  for exactly the documents the colorizer owns and leaves Monaco's monochrome set in place for a language the
+  settings exclude or a user who switched it off; `indentRainbowApplies` is the one predicate both halves ask,
+  so they cannot disagree. Chosen over Monaco's own `core-guide-indent` overlay and its
+  `editorIndentGuide.background1…6` theme slots: those carry no per-level fill, no active alpha of its own,
+  and no DOM a style or an assertion can name, and their colours belong to the theme rather than to a user
+  setting. A step covers only the lines that own the indentation, so a blank line inside a block draws none —
+  the reading indent guides already have everywhere else.
+- **Editor settings reach every live surface, not only the one that re-rendered.** `ResourcePreferences.editor`
+  carries the host's nested `editor` settings bag; `editorSettings.ts` merges it over the shipped defaults
+  through the shared contracts normalizer (clamping every opacity, never rejecting a host value), keeps the
+  merged result as the renderer-side settings, and notifies its subscribers, which is how a mounted
+  `attachIndentRainbow` re-reads and repaints. `MonacoEditor` publishes on mount and on every preferences
+  change, and attaches the colorizer to the model it holds — the same mount step that attaches language
+  services — so a model swap re-attaches and an unmount disposes.
 - **The desktop Monaco surface is a reader, not a language workstation.** Its file-only options keep the
   configured wrapping, generated code typography, minimap/overview-ruler removal and 6px shadowless scrollbar,
   and add read-only messaging (only for a surface the host did not ask to edit), the path as its accessible label, an 8px top inset, three-character line-number
-  gutter, full active-line paint, smooth scrolling, active bracket-pair + indentation guides, single-file
+  gutter, full active-line paint, smooth scrolling, active bracket-pair guides plus the colourized indentation
+  guides (the two bullets above), single-file
   occurrence highlighting, and ambiguous-Unicode suppression. Opaque `viewState` is restored only after its
   editor-state shape is validated and is saved on unmount, so tab switches round-trip scroll and folding.
   A review focus that arrives with the mount jumps to its line (`revealLineNow`, an immediate scroll): a
   smooth scroll started before the editor's first layout can stop short, and the handled focus is not
   retried, so the card stayed off screen. A focus on a mounted editor still scrolls smoothly.
   Monaco is imported from `editor.api` with only the reading contributions (find, folding, bracket matching,
-  context menu/copy, links, hover, word highlighting, sticky scroll, go-to-line/command palette, read-only
-  messaging and Unicode highlighting); keeping word highlighting preserves F7. Each contribution loads through
-  its typed `monaco-editor/features/<name>/register.js` entry, because Monaco's `exports` map closes the deep
-  `esm/vs/...` paths. The editor core loads `coreCommands` itself. `codicon-modifiers.css` is not exported, so
+  context menu/copy, links, hover, word highlighting, word operations, sticky scroll, go-to-line/command
+  palette, read-only messaging, Unicode highlighting, and the go-to-symbol link, goto commands and Peek
+  widget); keeping word highlighting preserves F7, and without `wordOperations` the caret only ever moves one
+  character because `cursorWordEndRight` and its three siblings were never registered. Most contributions load through their typed
+  `monaco-editor/features/<name>/register.js` entry, because Monaco's `exports` map closes the deep
+  `esm/vs/...` paths — but `features/gotoSymbol/register.js` is only the Ctrl/Cmd+Click definition link, and
+  `features/referenceSearch/register.js` only the standalone Peek controller, so the goto and peek commands
+  are imported through the same deep route the editor core itself uses (as `suggestController.js` is).
+  Without them the link is drawn and never navigates, and `gotoLocation.alternativeDefinitionCommand` names
+  a command that was never registered. The editor core loads `coreCommands` itself.
+  Those four word commands keep their own default chords, which are platform-correct: `CtrlCmd|Arrow` on
+  Windows/Linux and `Alt|Arrow` on macOS, where `CtrlCmd|Arrow` belongs to `cursorEnd`/`cursorHome`.
+  `ensureMonaco` adds four page-global `addKeybindingRules` for the `CtrlCmd|Arrow` chords so one chord means
+  word navigation on every platform. A rule is used rather than the per-mount `addAction` the save chord uses
+  because it runs Monaco's own commands: it needs no label, no context-menu entry, and no per-mount
+  registration or disposal. On macOS that trade is a real one — `Cmd|Arrow` becomes word navigation and stops
+  being the line-start/line-end pair, which is still reachable as `Fn|Arrow` and as `Home`/`End`; `Alt|Arrow`
+  is untouched. `codicon-modifiers.css` is not exported, so
   codicon spin animations (only hover loading icons here) stay static. The TS/JS/JSON/CSS/HTML
-  language-service contributions and their workers are absent, so this viewer emits no language-service
-  diagnostics by construction. Each editor mount owns its model: the model id is a per-mount `useId` scope
+  language-service contributions and their workers are absent: this viewer produces no language-service
+  diagnostics of its own, and the ones a file tab shows are the host's (`/lsp`, below). Each editor mount owns its model: the model id is a per-mount `useId` scope
   ahead of the path, so the same file on screen twice (a chat card and its full screen, a card and the
-  file's tab) never shares a model that one unmount disposes under the other.
+  file's tab) never shares a model that one unmount disposes under the other. An **editing** mount instead
+  takes the file's own `file://` URI (`Uri.file()` over the host's `filePath`), the only URI form a language
+  server can resolve imports and types against; a scheme-less or synthetic-root URI is a document no server
+  can locate. One mount claims each file, because only file tabs ask to edit and a workspace holds one tab
+  per path; a mount that finds the URI already held falls back to its scoped model rather than colliding
+  with it, which Monaco's model service refuses.
 - **Editing a file is host-owned, and only Monaco does it.** `fileEditorOptions` maps `editable` to Monaco
   `readOnly`, and drops the read-only message when the host asked to edit. The save keybinding is an
   editor-instance `addAction` for `KeyMod.CtrlCmd | KeyCode.KeyS`, with no context-menu group so it stays
@@ -630,6 +697,86 @@ content's own height.
   A model change whose text equals the text the props carry is the host's, not the reader's, and is never
   reported as an edit. Review commenting, decorations and review zones stay attached in edit mode: it is the
   same mount, and only `readOnly` differs.
+- **Typed marks close themselves and the caret stays between the pair.** Monaco auto-closes only what a
+  language configuration names, and a language registered here names none, so `ensureMonaco` supplies one
+  shared pair set through `setLanguageConfiguration` for every language the page can be handed — the built-in
+  `plaintext` behind an unknown extension included — with `notIn` left out, which is what makes a comment
+  behave like code. The pairs, the step-over of a closing mark, `autoSurround` and the indent `Enter` inherits
+  are all Monaco's own engine: no custom keybinding, keydown listener or caret-repositioning code exists here.
+- **Language services attach only to the mount that holds a file's own model.** `MonacoEditor` calls
+  `monacoSetup.attachLanguageServices(model, host, workspaceId)` when that model's URI scheme is `file:`,
+  because a server answers nothing about a document it cannot locate; a read-only surface opens no socket.
+  The two halves do not import each other's world: `lspClient.ts` speaks the protocol — one JSON-RPC message
+  per WebSocket frame, `initialize` → `initialized` → `textDocument/didOpen`, then full-text
+  `textDocument/didChange` for every model edit, and the answers to the requests a server sends back
+  (unanswered, and the feature reply never arrives) — while `monacoSetup` owns the Monaco half: the
+  completion, hover, definition, type-definition and reference providers, `publishDiagnostics` through
+  `setModelMarkers` under the owner `lsp-<language>`, and the teardown that releases the content listener,
+  the registrations, the markers and the socket. `lspClient` declares the LSP shapes it reads instead of
+  taking them from a protocol package, which is also what lets its tests run without a DOM: it normalizes a
+  definition answer's `Location | Location[] | LocationLink[]` into one shape (the whole target, the
+  identifier inside it, and the range the request came from) and hydrates every file target through a
+  three-method model store the Monaco half supplies.
+  The socket is `/lsp?language=<id>&root=<workspacePath>` on the origin that served the page — the host's own
+  route, proxied by the dev server as `/ws` is, and the same host `inferUrl` dials — with an explicit `wsUrl`
+  for a host reached elsewhere. `monacoSetup` gives `lspClient` the workspace root in both spellings it needs
+  (the host's own path, and `Uri.file()` over it), and a host that names none leaves `initialize` with the
+  document's parent as its root, which is the weaker answer a server can do nothing about. It is one-shot: no reconnect, and closing it is where the host ends its language-server
+  child. A socket still connecting is closed too, because the host would otherwise spawn a server for a
+  document nothing is attached to — that is what a fast file switch used to leave behind. The teardown also
+  runs on a **model swap**: a path change on a live editor changes the language, so the attachment is
+  re-derived from the model the editor now holds rather than keeping a file off screen served. A host with
+  no installed server for the language refuses the upgrade, and that costs only the refused handshake: there
+  is no client graph to pay for a read-only view or an unserved language.
+  Providers are registered for a whole language, so each answers only for the model its own attachment
+  opened and every other model of that language keeps its behavior. A `null` answer is no answer: a server
+  that declines a position yields nothing to Monaco rather than an empty payload that reads as one.
+  Suggestions carry a registration trap: `features/suggest/register.js` is the inline-completions half,
+  while the widget, the `editor.action.triggerSuggest` chord and the model that reacts to a trigger
+  character live in `editor/contrib/suggest/browser/suggestController.js`, imported through the same
+  exports-map route the editor core itself uses. Without it a provider is registered and never asked.
+- **A target another file names is read before it is shown.** Monaco resolves a target's *model* for the
+  cross-file definition preview, for every row of the multi-definition and reference Peek pop-up, and for a
+  jump into another file; with no model its model resolver throws `Model not found` and the answer shows
+  nothing. So a provider hydrates what it returns: `ensureModelsForLocations` asks the host for each
+  distinct `file:` target once (a Peek can name one file a dozen times), leaves an already-modelled target
+  alone, and drops a target the host cannot read rather than failing the request. The read is the host's own
+  `readFile` for the target's path — a `file://` URI is spelled from its URI path, corrected only for the
+  Windows drive form, because `Uri#fsPath` follows the platform the *browser* claims (Playwright's
+  `devices["Desktop Chrome"]` hands a Windows user agent to a Linux host), not the one the host reads on.
+  A mount then claims that model instead of making a second one for the same URI, which Monaco's model
+  service refuses: the claim is safe because only editing mounts take a `file:` URI and a workspace holds one
+  tab per path, and a model another live editor already holds is still left alone.
+- **A jump out of the document is the host's tab, not a second editor.** Monaco calls its registered opener
+  for any resource other than the model in view. `monacoSetup` registers one opener for the page (Monaco
+  asks the handler registered last, and the editor that asked is handed to it), and each language service
+  tells it which host answers for which file: the same-file branch reveals the position the request named; a
+  target another group already shows is revealed there; anything else is
+  `host.openFile(workspaceId, path, { keep: true })` with the position queued as a pending reveal that the
+  mount or model swap arriving at that path applies before the user sees it. `gotoLocation`'s values are not
+  restated in the editor options: `definitionLinkOpensInPeek: false` and the `peek` /
+  `editor.action.goToReferences` defaults are what Monaco ships and are exactly what this feature wants —
+  one definition jumps, several peek, and a click on a symbol that is already the definition asks for its
+  references instead.
+- **Known limit: rename, signature help, formatting and code actions register no provider here**, so a
+  server that offers them is never asked. A target outside the roots the host may read (a second project, an
+  interpreter outside any environment it knows) has no text to show, so it has no preview, no Peek row and no
+  tab — a definition reached through one still refuses to open a tab the host could not read. A file outside
+  the worktree has no worktree to save back to, so the app keeps that tab read-only (`panels` `FilePane`),
+  and a read-only tab takes the scoped model a read surface uses: it opens no socket, so navigation does not
+  continue *from* a library stub or a declaration file.
+  `initialize` names the document's own directory as its `rootUri` — the only root this client knows — and a
+  server resolves imports, stubs and types from there; `server` `host/lspRoute.test.ts` pins what both
+  allowed servers answer under such a root, including a standard-library definition that lives outside the
+  fixture, and `lspClient.test.ts` pins what this client sends and how it answers.
+- **Post-mortem: `monaco-languageclient` and `@codingame/monaco-vscode-api` were removed for this.**
+  `MonacoLanguageClient` constructs through `vscode-languageclient`, which drives the monaco-vscode-api
+  `vscode` API, and that API is only ready once the app mounts that fork instead of `monaco-editor` (one
+  core, above): beside a mounted `monaco-editor` it threw `Default api is not ready yet` at every code file
+  tab, having already pulled its ≈7 MB (1.8 MB gzip) graph into the page — a socket the host served and
+  nothing spoke on. `vscode-ws-jsonrpc`'s own client half cannot carry the protocol either: it imports bare
+  `vscode-jsonrpc`, which installs no runtime abstraction layer, and the entry that does install one is
+  reachable only under the `browser` export condition, which Vite resolves and `bun test` does not.
 - **`MonacoEditor` mounts Monaco itself.** A layout effect creates the editor and its model in the commit
   that mounts the view, with no loading state, then restores the view state and attaches review commenting
   (review attaches only at mount). Its layout cleanup saves the view state before it disposes the editor

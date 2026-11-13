@@ -19,7 +19,7 @@ styles/spacing.json            the authored SOURCE — the only authored canonic
 styles/spacing.schema.json     the editor-facing contract for it
 scripts/spacing.ts             load / validate / render — the only place a spacing derivation is written
 scripts/generate-spacing.ts    writes the output; `--check` fails when it is stale
-styles/generated/spacing.css   GENERATED: the `--space-<n>` tokens + the `--spacing: 1px` base
+styles/generated/spacing.css   GENERATED: the `--space-<n>` tokens, one whole-pixel re-issue of them per UI scale, and the `--spacing` base
 styles/spacingUsage.test.ts    the adoption guard
 ```
 
@@ -43,9 +43,16 @@ directly by the few hand-written CSS surfaces that cannot use a utility (the Mon
 use the `p-<n>` / `m-<n>` / `gap-<n>` utilities. Editing
 the generated file fails `bun run spacing:check`, which runs in pre-commit and in `apps/web`'s build.
 
+**The one input this pipeline reads from another source is the UI scale.** `uiScales` in `typography.json`
+owns the factors ([TYPOGRAPHY.md](./TYPOGRAPHY.md) → *The user UI scale*), and the generator re-issues every
+step at `round(n × factor)` under `:root[data-ui-scale="<id>"]` so a hand-written `var(--space-8)` and a
+`p-8` utility keep naming the same length at every scale. This source always names the canonical value; a
+changed `uiScales` makes `spacing.css` stale, and `spacing:check` says so.
+
 ## Number = px (and why sizing shares it)
 
-The utilities resolve through **`--spacing: 1px`** set in the generated `@theme inline` block. Tailwind
+The utilities resolve through **`--spacing: calc(1px * var(--tr-ui-scale, 1))`** set in the generated
+`@theme inline` block. Tailwind
 v4 computes a bare-number spacing utility as `calc(var(--spacing) * n)`, so a 1px base makes `p-4` = 4px,
 `gap-12` = 12px, uniformly. This **replaces** Tailwind's built-in `0.25rem` base, so no length can fall
 back to Tailwind's own numeric scale — the requirement that made the t-shirt names (`p-xs`, `gap-sm`)

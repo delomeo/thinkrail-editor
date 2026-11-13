@@ -15,8 +15,7 @@ channel fan-out, and the process-boot wrapper both launchers share.
 
 ## Boundary
 
-- **Owns:** `server.ts` (async `createServer` first asks auth to start Central artifact watching and publish
-  the initial current PI runtime, falling back to plain PI with closed `load-failed` state when needed, then creates
+- **Owns:** `server.ts` (async `createServer` initializes the current PI runtime, then creates
   `Bun.serve` with `/health`, `/ws` upgrade, a
   **`GET /files/<workspaceId>/<relpath>`** route streaming a worktree file's raw bytes from `Bun.file`
   after classifying only its bounded 8 KiB head (via `fs`'s `resolveWorktreeFile` — path-contained; bad
@@ -70,12 +69,11 @@ channel fan-out, and the process-boot wrapper both launchers share.
   unaffected. Neither limit can cost exactly-once — one refuses work that has not started, the other keeps the
   record of work that finished and drops only its answer,
   the **`provider.login`** channel publish (the `auth` module's session-less login-frame bridge, wired like
-  `pi.extensionUi`), the **`provider.changed`** invalidation broadcast after auth changes the Central status or
-  current runtime generation, after every successful in-app provider login (not an MCP sign-in), and after
+  `pi.extensionUi`), the **`provider.changed`** invalidation broadcast when the current runtime generation
+  changes, after every successful in-app provider login (not an MCP sign-in), and after
   every `provider.logout`, so
   other clients and the Welcome surfaces see the new provider (clients re-read status/models), and the `provider.*` handlers—including
-  `provider.jbcentralQuota`, whose handler composes `settings`' enabled/interval values with `auth`'s closed
-  cached read so the siblings never import each other—the
+  the
   **`watch` wiring** (inject the
   `workspace.fsChanged` publish callback into `watch` and inject `agent`'s project-skill path classifier so
   each capped batch carries independent `skillChange: none|detected|unknown` evidence; expose
@@ -102,8 +100,7 @@ channel fan-out, and the process-boot wrapper both launchers share.
   `ensureWatch(workspaceId)` from the
   workspace-read handlers (`fs.*`, `git.status`/`git.diffFile`, `spec.graph`) — a read is the "a client is
   looking" signal; `stopWatch` in `workspace.remove`'s fast path beside `evictSpecIndex`;
-  `stopAllWatches()` in `stop()`), `stopJbcentralRuntime()` and `cancelAllLogins()` in `stop()` before the
-  socket close,
+  `stopAllWatches()` in `stop()`), and `cancelAllLogins()` in `stop()` before the socket close,
   an optional boot-time `openProject(projectPath)` (best-effort — a launcher convenience), the
   **analytics wiring** (`initializeAnalytics` at boot from launcher provenance, destination, and per-run
   additional-data suppression; startup grants the additional tier only when `analyticsEnabled &&
@@ -129,12 +126,10 @@ channel fan-out, and the process-boot wrapper both launchers share.
   `provider_login` from the
   login-publisher tee's terminal `success` frames with the method (`oauth`/`api-key`) looked up from
   `loginAnalytics.ts` — the loginId→method map the `provider.loginStart` handler records (and
-  `provider.loginCancel` clears; an unknown loginId tracks nothing, fails closed) — +
-  a successful `provider.jbcentralConnect`→`applied` (failed actions never count) — per
+  `provider.loginCancel` clears; an unknown loginId tracks nothing, fails closed) — per
   `submodule-server-analytics`,
   feature modules never track). Basic login/chat/send events add the closed auth category from their own
   session/login generation, never from a later global runtime; sends snapshot provider/auth before dispatch.
-  Opaque-loader provider membership identifies Central without opening its auth/configuration surface.
   Additional setup/run/task/review/PR observations use the closed triggers in
   [[submodule-server-analytics]], with transient consent-scoped correlation and task-artifact reconciliation.
   Host alone mediates these events; analytics initialization emits the packaged-install lifecycle event,
@@ -171,9 +166,9 @@ channel fan-out, and the process-boot wrapper both launchers share.
   `boot.ts` (`bootHost` → await `initLogging` — debug level when the launcher passed `verbose` — then
   install the crash report, await the login-shell environment when the launcher passed
   `resolveShellEnv: true` (started before `initLogging`), apply the stored host environment
-  (`applyHostEnvironment`, before any `getAgentDir()` reader), pre-warm the same Central watcher/runtime
-  initialization before choosing the serving port, await `createServer` (which idempotently enforces
-  runtime bootstrap for low-level embedders), and write the `listening on` info line (see
+  (`applyHostEnvironment`, before any `getAgentDir()` reader), initialize the PI runtime before choosing the
+  serving port, await `createServer` (which idempotently enforces runtime bootstrap for low-level
+  embedders), and write the `listening on` info line (see
   `submodule-server-log`); `reportDesktopError(error, scope)` is the desktop launcher's handled-error door
   into analytics (source `desktop`). Its
   SIGINT/SIGTERM handlers await that same shutdown before process exit. Settling aborts streaming sessions
@@ -245,8 +240,8 @@ channel fan-out, and the process-boot wrapper both launchers share.
   `mcp.list` would report `handledElsewhere` (the probe's loader forces `builtin:mcp`);
   `provider.loginReply` / `provider.loginCancel` route `mcplogin_*` ids to the probe with the caller's
   `clientKey`, and `createServer` sends probe frames to the owner's socket only, cancels the probes of a
-  client when its retention timer finally reaps it (`cancelMcpProbesOwnedBy`, beside `releaseInterview`;
-  never on a mere socket close — a reconnect within the window keeps the key and its sign-in) and cancels
+  client when its retention timer finally reaps it (`cancelMcpProbesOwnedBy`; never on a mere socket
+  close — a reconnect within the window keeps the key and its sign-in) and cancels
   every probe on stop — `mcp.login` / `mcp.testConnection` pushes go to the starting
   connection only (`ws.send`, not the broadcast topic) and foreign replies fail with `LOGIN_NOT_OWNER`; `session.list` decorates agent's `listSessions` summaries with
   `openTodos: countOpenTodos(…)` per session (a host-only composition of `agent` + `todos` — `agent`
@@ -448,15 +443,19 @@ channel fan-out, and the process-boot wrapper both launchers share.
     a failed background teardown is warn-logged, never thrown into the void (nothing awaits it). **Archive keeps the branch but not the chat:** the git branch stays (code is
     recoverable), yet chat history is purged with the worktree — a deliberate scope choice, not a leak.
 - **Change mutations are serialized per workspace, on their own chain** (`reviewLock.ts`'s
-  `createKeyedLock` mints both): `change.revert`/`change.undo` run under **`withChangeLock(workspaceId)`**
-  so two reverts cannot interleave their load→verify→write passes, while reviews and changes —
+  `createKeyedLock` mints both): `change.revert`/`change.undo` and the worktree file/folder mutations
+  (`workspace.file.*`, `workspace.folder.create`, `workspace.path.*`) run under **`withChangeLock(workspaceId)`**
+  so two mutations cannot interleave their load→verify→write passes, or slip between a revert's verify and
+  its awaited trash, while reviews and changes —
   independent resources — never queue behind each other. The agent is deliberately **not** paused: the
   `changes` module's compare-and-swap makes the race safe, and the fs watcher's `fsChanged` tick re-reads
-  the open tabs after a write exactly as it does after an agent edit (so both handlers `ensureWatch`
+  the open tabs after a write exactly as it does after an agent edit (so all of these handlers `ensureWatch`
   first). The named failures travel as `WsResponse.errorCode`
   (`STALE_VIEW`/`SCOPE_IMMUTABLE`/`RANGE_INVALID`/`RECEIPT_UNKNOWN`/`UNSUPPORTED_CHANGE`) through the same `CodedError`
   mapping `UNKNOWN_COMMIT` uses — the dispatch names no codes of its own, so a code added in `contracts`
-  and thrown by a feature reaches the client with no host-side allowlist to update.
+  and thrown by a feature reaches the client with no host-side allowlist to update. A file/folder name
+  conflict or a missing target is not such a code: it travels as the plain `WsResponse.error` text the pane
+  shows as its own "that name is taken" message.
 - **Review state is host-composed and serialized per workspace** (`reviewLock.ts`): `review.send*` is
   `reviews` (drafts + package) plus `agent` (session) plus `reviews` again (mark sent + link) — a
   check-then-mark straddling an `await createSession(…)`, the review layer's only non-atomic gap.
@@ -498,6 +497,20 @@ channel fan-out, and the process-boot wrapper both launchers share.
   recovery, when the transcript is genuinely gone from disk (there is no UI to close a review and
   start over, so wedging it would be worse); every other re-open failure throws rather than silently
   forking the conversation.
+- **Language-server bridge:** `lsp` owns the `/lsp` protocol and its children; `host` only routes. The
+  upgrade asks `lsp.resolveServerCommand` for the language id first (no server → 400), then marks the socket's
+  `SocketData.languageId`, which is the routing marker every websocket handler checks **before** any transport
+  bookkeeping: no client-key registration, subscription, replay cache, ack, backpressure latch, or reap timer
+  ever sees an `/lsp` socket. The same upgrade reads `root`, the absolute directory of the workspace the
+  editor belongs to, and passes it as `SocketData.lspRoot` to `openLspSession`: which project a language
+  server analyzes is a routing fact here, and what that directory holds on disk is `lsp`'s question to
+  answer. Its frames are handed to `lsp` untouched — this host never parses an LSP
+  message, never assigns it a channel, and never registers it as a request method.
+- **Team Space rooms:** the same shape for `/team-sync` (and `/<room>` suffixed paths, which is how
+  `y-websocket` spells a room): the upgrade reads `?room=` and marks `SocketData.teamRoom`, and every
+  websocket handler checks that marker before transport bookkeeping too. Whether the code is a room at all is
+  `team`'s question, answered by a `1008` close on the socket rather than a failed handshake — the client can
+  tell a refused room apart from a dropped connection. Its binary frames are handed to `team` untouched.
 - **Scratch-dir seeding on chat start:** the `session.create` handler calls `workspaces`'
   `ensureWorkspaceScratchDir` before creating the session — the Default workspace's gitignored
   `.thinkrail/context/` lands in the user's repo only when a chat actually starts there (and a
@@ -546,14 +559,6 @@ channel fan-out, and the process-boot wrapper both launchers share.
   host restart and does not shut down or relaunch the unsupervised process; failure permits retry and exposes no
   child output or arbitrary diagnostic. Discovery failures preserve known state, shutdown makes late results
   inert, and the host never learns feed, installer, command, path, channel, or version selection.
-- **Interview invitation delivery:** the three user-send handlers share one post-`ackSend` path that
-  filters control traffic once, tracks anonymous `message_sent`, and records the local feedback count. The
-  feedback module's injected publisher maps an eligible claim to addressed `feedback.interview` delivery
-  for that request's opaque client key only when its socket-advertised protocol version supports the channel;
-  delivery failure or final client reap after the reconnect grace releases the claim, while a transient
-  reconnect retains and re-delivers it after `server.welcome`. A host restart has no claim to re-deliver, and
-  the welcome clears the frontend's stale popup projection. Popup `feedback.respond` actions are ordinary
-  replay-safe requests and never alter the Settings link.
 - **Chat titles:** `session.rename` resolves `workspaceId` to its cwd and delegates title validation plus the
   unconditional durable write to `agent`; it never patches one client directly. Automatic titles come only
   from the agent's `set_title` (above); sends carry no naming work. Both manual and automatic
@@ -630,11 +635,11 @@ enabled/confirmed choice before entering analytics attribution.
   the `projects` module's injected publisher) + the workspace lifecycle trio
   (`workspace.created`/`updated`/`removed`, published from the `workspaces` module's injected publisher) +
   **`session.deleted`** (published from the agent module's injected publisher) + **`provider.changed`**
-  (published from auth's Central/runtime invalidation seam and on a successful provider login) + **`host.updateAvailable`** (published for each
+  (published from auth's runtime-invalidated seam and on a successful provider login) + **`host.updateAvailable`** (published for each
   retained CLI-update lifecycle replacement) use push channels. Every
   **broadcast** push channel a client should hear must be `ws.subscribe`d in the WS
-  `open` handler — a publish on an unsubscribed topic reaches nobody, silently. Four channels are deliberately
-  **not** subscribed and not broadcast: `feedback.interview`, `terminal.data`, `terminal.exit`, and
+  `open` handler — a publish on an unsubscribed topic reaches nobody, silently. Three channels are deliberately
+  **not** subscribed and not broadcast: `terminal.data`, `terminal.exit`, and
   `terminal.detached` are sent with `ws.send` to one addressed client. Adding an addressed channel means
   wiring a publisher, not a subscription.
 - **Terminal backpressure never trusts the `drain` event alone.** A backpressured `ws.send` latches the

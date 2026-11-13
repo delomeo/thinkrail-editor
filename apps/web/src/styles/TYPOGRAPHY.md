@@ -50,6 +50,7 @@ both markdown surfaces, the `<body>` base).
 | `fontSizes` | `s10` `s11` `s12` `s13` `s14` `s16` `s18` `s20` `s24` `s44` (px) |
 | `lineHeights` | `compact` 1.25 · `metadata` 1.25 (12px→15px) · `ui` 1.3 (14px→18.2px) · `code` 1.4 · `relaxed` 1.4 (13px→18.2px) · `default` 1.3 (14px→18.2px) · `reading` 1.45 (14px→20.3px) |
 | `letterSpacings` | `normal` · `loose` 0.02em · `wide` 0.05em · `widest` 0.1em · `brand` 0.5px |
+| `uiScales` | `default` 1 · `large` 1.25 · `xlarge` 1.5 — the sizes a user may pick, see **UI scale** |
 
 The leading scale is deliberately **dense** (1.25–1.4): Geist’s x-height at 14px is 7.4px (cap height 9.9px), so
 the former 1.5–1.6 left an empty band between lines taller than the letters themselves — it read as
@@ -99,8 +100,29 @@ would override the size and line-height of whatever element the bold text sits i
 The JSON holds **no** CSS selectors, class strings, component paths, usage lists, rationale or audit
 data. Rationale lives in this file.
 
-## The `<body>` base
+## The user UI scale
 
+`uiScales` is the one part of the type system a user picks. The generator issues every non-identity scale as
+its own `:root[data-ui-scale="<id>"]` block: the whole `--tr-font-size-*` ladder at
+`round(base × factor)`, `--tr-code-row-height` re-derived from the **scaled** code size — the same arithmetic
+Monaco derives it from — and `--tr-ui-scale: <factor>`, the multiplier the rest of the interface scales with.
+Selecting a scale is one attribute on `<html>` (`styles/uiScale.ts`, applied synchronously where the config
+lands, before any render reads a token, with a first-paint hint so a restart never boots at another size);
+`default` carries no attribute and needs no CSS of its own.
+
+Whole pixels are the point: a half-pixel size would give CSS one row height and Monaco another, which is the
+drift this layer exists to remove. Because every consumer keeps reading the same names, the semantic classes,
+both prose systems, Monaco, xterm and Pierre's virtualizer move with the text instead of beside it. Line
+heights are unitless ratios, so they scale on their own. `tokens.css` scales the row heights that hold text
+and `generated/spacing.css` scales the `--space-*` ladder plus Tailwind's `--spacing` unit (see
+[SPACING.md](./SPACING.md)), so icons, gaps and controls keep their proportions.
+
+The setting is the closed `uiScale` union in `contracts`, and `typography.test.ts` fails if the ids it accepts
+and the blocks the generator emits stop being the same list. Validation rejects a source with no identity scale
+named `default`, and two scales that resolve to the same ladder. Only larger text is offered: the base ladder
+*is* the compact design, and a factor below 1 would re-derive chrome it was never sized for.
+
+## The `<body>` base
 `rootStyle` is the typography of text that carries no semantic class — and it is **a `$ref`, never
 values** (today `{ "$ref": "ui.default" }`, so 14px/370 interface with a 20px line height). The generator emits it as a
 `body { … }` rule inside `@layer base`, which puts it *below* every semantic class in the cascade: it is
@@ -227,7 +249,9 @@ that is not a dependency and a font dependency no family claims. The one other c
 in `apps/website` (a standalone leaf that cannot import ours); `apps/website/src/fonts.test.ts` fails
 when it drifts from this file.
 
-`tokens.css` holds **no typography at all** — not a value and not an alias. It used to carry `--font`,
+`tokens.css` holds **no typography at all** — not a value and not an alias. Its one reach into type is the
+`--tr-ui-scale` factor, which sizes the rows that hold the text (**The user UI scale** above): a multiplier,
+never a step of the ladder. It used to carry `--font`,
 `--font-mono`, `--font-accent`, `--font-mono-size` and `--line-height` as aliases onto the generated
 tokens; every one of them is gone, because a second name for a value is the thing that drifts. The
 consumers that cannot use a class read the `--tr-*` tokens directly. Cabinet Grotesk is retired
@@ -285,8 +309,9 @@ The OTP code is **not** an exception any more: it is the named `code.otp` style 
 4. `bun test` (source + adoption guards) and `bun run e2e -- e2e/typography.spec.ts` for computed styles.
 
 Do **not**: add a typography utility or `--text-*` mapping to `index.css`, add a font alias to
-`tokens.css`, declare a font property in a component, or edit `styles/generated/typography.css`. The
-pre-commit hook and `apps/web build` run `typography:check`, so stale generated CSS cannot land.
+`tokens.css`, declare a font property in a component, edit `styles/generated/typography.css`, or hand-write a
+`data-ui-scale` block. The pre-commit hook and `apps/web build` run `typography:check`, so stale generated CSS
+cannot land.
 
 This primitives + semantic-tokens + schema + generator shape is the pattern a **colours** JSON should
 mirror; nothing here is Tailwind-specific, and Tailwind merely consumes the generated CSS.

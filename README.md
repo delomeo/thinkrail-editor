@@ -1,7 +1,6 @@
 # ThinkRail
 
-[![JetBrains incubator project](https://jb.gg/badges/incubator-plastic.svg)](https://confluence.jetbrains.com/display/ALL/JetBrains+on+GitHub)
-[![GitHub stars](https://img.shields.io/github/stars/JetBrains/thinkrail?style=social)](https://star-history.com/#JetBrains/thinkrail&Date)
+[![GitHub stars](https://img.shields.io/github/stars/delomeo/thinkrail-editor?style=social)](https://github.com/delomeo/thinkrail-editor)
 [![Discord](https://img.shields.io/badge/Discord-Join%20the%20chat-5865F2?logo=discord&logoColor=white)](https://thinkrail.ai/discord)
 
 ThinkRail is the agentic IDE that gets better every time you use it — learning your project through
@@ -16,12 +15,6 @@ create the tools it needs based on how you actually work.
 **Discord:** [thinkrail.ai/discord](https://thinkrail.ai/discord)
 
 ⭐ If you find ThinkRail useful, give it a star — it helps others discover it.
-
-<p align="center">
- <a href="https://www.star-history.com/jetbrains/thinkrail">
-  <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=JetBrains/thinkrail&type=rank&theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=JetBrains/thinkrail&type=rank" /><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=JetBrains/thinkrail&type=rank" /></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=JetBrains/thinkrail&type=trending&theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=JetBrains/thinkrail&type=trending" /><img alt="GitHub Trending Repository of the Day" src="https://api.star-history.com/badge?repo=JetBrains/thinkrail&type=trending" /></picture>
- </a>
-</p>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".github/readme-assets/workbench-dark.png">
@@ -43,9 +36,23 @@ create the tools it needs based on how you actually work.
   decision, and lets you mark it ready, hand failing checks or a diverged branch to the agent, merge it
   with the repository's last-used method, reopen it, or delete the remote branch.
 - **A real IDE around the agent.** A splittable workbench of Monaco editor tabs, a Files tree with live git
-  change marks and a Changed view, terminals, and documents — all scoped to the active workspace. Leave
+  change marks and a Changed view, terminals, and documents — all scoped to the active workspace. In a
+  Python, TypeScript or JavaScript file the language server backs the editor: diagnostics as you type, and
+  Ctrl/Cmd-click a symbol to jump to its definition — several definitions peek in place, a click on a symbol
+  that is already the definition shows everywhere it is used, and a definition resolved in a dependency or a
+  type stub opens that file read-only at the line. Editing keeps the keyboard's own conventions: Ctrl/Cmd+Arrow
+  jumps a whole word and Ctrl/Cmd+Shift+Arrow selects one (Alt+Arrow on macOS as always), and a tab holding
+  text you have not saved is asked whether to save it before it closes. Each nesting step of a file's
+  indentation is drawn in the next colour of a four-colour cycle, so a block's depth reads at a glance; the
+  colours, their opacities, whether the step is a line or a filled block, and which languages keep plain
+  guides are settings under `editor` in `~/.thinkrail/config.json`. Leave
   anchored review comments on files and diffs and send them to a chat as structured context, or open the
   worktree in your installed IDE.
+- **Team Space.** Share a file with a room code and everyone in that room edits the same text — live remote
+  carets included. Sharing is opt-in: nothing private leaves your worktree until you press **Share to Team**,
+  and **Pull to disk** is what brings a shared file into yours. A radar shows who is in the room and which
+  shared file they are looking at; the shared workbench is cached in your browser and snapshotted by the host,
+  so closing a laptop loses nothing.
 - **Chats that stream like the engine thinks.** Several concurrent `pi` sessions per workspace, each with
   its own model and live token and cost readout. Steer a running turn or queue a follow-up, delegate to
   subagents, and work a shared plan the agent updates and you edit — each completed step can be committed
@@ -71,8 +78,8 @@ create the tools it needs based on how you actually work.
   the tools you trust in a project), keeps servers a repository
   defines off until you approve them, signs you in to OAuth servers from Settings, and shows each chat's
   servers next to its background commands and subagents.
-- **Your providers, your credentials.** Sign in with [JetBrains AI](https://www.jetbrains.com/ai/) or
-  connect any provider through `pi`'s own auth. ThinkRail has no accounts of its own.
+- **Your providers, your credentials.** Connect any provider through `pi`'s own auth. ThinkRail has no
+  accounts of its own.
 - **Your pi setup.** ThinkRail reads your existing `pi` configuration (`~/.pi/agent`). To use another one
   — say a personal `~/.pi/agent-personal` — or to pass extra environment variables to the agent, terminals
   and MCP servers, set them in Settings → Environment; they apply on the next start. A variable you set
@@ -83,6 +90,8 @@ create the tools it needs based on how you actually work.
   Japanese, Simplified Chinese, and Spanish are built in. Add a language ThinkRail doesn't ship yet by
   dropping a translated `en.json` into `~/.thinkrail/locales` — it applies as you save. Agent replies and
   tool output stay as the agent wrote them.
+- **Your text size.** Settings → Appearance → Text offers Default, Large and Extra large. Interface text, code,
+  and the space and rows around them scale together — chat, editor, diffs and terminal alike.
 - **Your themes.** Settings → Appearance ships dark, light, minimal and high-contrast themes. Make your own
   by copying a bundled `*.theme.json`, changing its id and colors, and saving it to `~/.thinkrail/themes`.
 
@@ -96,7 +105,7 @@ create the tools it needs based on how you actually work.
 ## Install
 
 ThinkRail ships in two additive forms: a native desktop installer and the self-contained `thinkrail` CLI.
-Both are published with `SHA256SUMS` on the [releases page](https://github.com/JetBrains/thinkrail/releases).
+Both are published with `SHA256SUMS` on the [releases page](https://github.com/delomeo/thinkrail-editor/releases).
 
 ### Desktop
 
@@ -127,13 +136,13 @@ The installer downloads the right binary, verifies its SHA-256 checksum, and put
 **macOS / Linux** (also Windows under Git Bash):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/JetBrains/thinkrail/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/delomeo/thinkrail-editor/main/install.sh | bash
 ```
 
 **Windows** — the same command works from cmd and PowerShell:
 
 ```powershell
-powershell -c "irm https://raw.githubusercontent.com/JetBrains/thinkrail/main/install.ps1 | iex"
+powershell -c "irm https://raw.githubusercontent.com/delomeo/thinkrail-editor/main/install.ps1 | iex"
 ```
 
 Then run `thinkrail`, optionally with a git repo to open as a project:
@@ -142,8 +151,8 @@ Then run `thinkrail`, optionally with a git repo to open as a project:
 thinkrail ~/code/my-repo
 ```
 
-`thinkrail` needs `git` on your PATH and a model provider — sign in with JetBrains AI from the app or use
-your own provider credentials. The first launch walks you through connecting a provider and picking a
+`thinkrail` needs `git` on your PATH and a model provider — sign in from the app or use your own provider
+credentials. The first launch walks you through connecting a provider and picking a
 project; **Start a new project** creates an empty git repository (under `~/thinkrail` by default), so you
 don't need one ready. **Add project → Clone repository…** clones a Git URL into a new folder on the
 computer running ThinkRail and opens it as a project. Choose the parent folder and folder name, optionally
@@ -158,17 +167,17 @@ The installer takes `--channel stable|nightly` and `--version`; a pinned version
 selected channel:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/JetBrains/thinkrail/main/install.sh | bash -s -- --channel nightly
-curl -fsSL https://raw.githubusercontent.com/JetBrains/thinkrail/main/install.sh | bash -s -- --channel stable --version 0.1.2
-curl -fsSL https://raw.githubusercontent.com/JetBrains/thinkrail/main/install.sh | bash -s -- --channel nightly --version 0.2.0-nightly.10
+curl -fsSL https://raw.githubusercontent.com/delomeo/thinkrail-editor/main/install.sh | bash -s -- --channel nightly
+curl -fsSL https://raw.githubusercontent.com/delomeo/thinkrail-editor/main/install.sh | bash -s -- --channel stable --version 0.1.2
+curl -fsSL https://raw.githubusercontent.com/delomeo/thinkrail-editor/main/install.sh | bash -s -- --channel nightly --version 0.2.0-nightly.10
 ```
 
 On Windows the options are environment variables (`THINKRAIL_CHANNEL`, `THINKRAIL_VERSION`,
 `THINKRAIL_PREFIX`, `THINKRAIL_NO_MODIFY_PATH`):
 
 ```powershell
-$env:THINKRAIL_CHANNEL='nightly'; irm https://raw.githubusercontent.com/JetBrains/thinkrail/main/install.ps1 | iex   # PowerShell
-set "THINKRAIL_CHANNEL=stable" && set "THINKRAIL_VERSION=0.1.2" && powershell -c "irm https://raw.githubusercontent.com/JetBrains/thinkrail/main/install.ps1 | iex"   # cmd
+$env:THINKRAIL_CHANNEL='nightly'; irm https://raw.githubusercontent.com/delomeo/thinkrail-editor/main/install.ps1 | iex   # PowerShell
+set "THINKRAIL_CHANNEL=stable" && set "THINKRAIL_VERSION=0.1.2" && powershell -c "irm https://raw.githubusercontent.com/delomeo/thinkrail-editor/main/install.ps1 | iex"   # cmd
 ```
 
 Installed stable and nightly CLI hosts periodically offer **Run Update** in **Settings → Updates**. It runs
@@ -192,14 +201,14 @@ manually or reinstalled with the script.
 
 | Platform | Desktop | CLI |
 | --- | --- | --- |
-| macOS Apple Silicon / Intel | DMG | signed binary |
-| Windows x64 | signed setup executable and app binaries | signed `.exe` |
-| Linux x64 / ARM64 | setup tarball, unsigned | unsigned |
+| macOS Apple Silicon / Intel | DMG | binary |
+| Windows x64 | setup executable and app binaries | `.exe` |
+| Linux x64 / ARM64 | setup tarball | unsigned |
 
-JetBrains signs the Windows CLI, the desktop setup executable, and every executable and DLL the desktop app
-installs. The macOS CLI is signed but not yet notarized.
-Signed and notarized desktop DMGs require the coordinated JetBrains service pipeline; older published DMGs
-and locally built packages may still be unsigned and blocked by Gatekeeper. Linux artifacts are unsigned.
+Artifacts published from this repository are unsigned and notarization-free: a macOS download quarantines
+on first launch (right-click → **Open**, or `xattr -d com.apple.quarantine`), a Windows binary keeps Bun's
+icon, and Linux artifacts are unsigned. The upstream JetBrains releases are signed and notarized through a
+private service pipeline that this repository does not use.
 
 ## Analytics & privacy
 
@@ -242,7 +251,7 @@ You need **Bun** 1.4.4 (the pinned package manager and runtime), **Node.js** ≥
 in-process `pi` engine), and an authenticated `pi` provider for agent work.
 
 ```bash
-git clone https://github.com/JetBrains/thinkrail.git
+git clone https://github.com/delomeo/thinkrail-editor.git
 cd thinkrail
 bun install
 bun run dev                          # host + web client together; Ctrl+C stops both
@@ -266,7 +275,7 @@ governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
 ## Community
 
 Join us on [Discord](https://thinkrail.ai/discord) to ask questions, share what you're building, and
-talk to the team. Bugs and feature requests go to [GitHub issues](https://github.com/JetBrains/thinkrail/issues).
+talk to the team. Bugs and feature requests go to [GitHub issues](https://github.com/delomeo/thinkrail-editor/issues).
 
 ## License
 
