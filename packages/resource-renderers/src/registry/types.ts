@@ -7,6 +7,7 @@ import type {
 	ReviewSelector,
 } from "@thinkrail/contracts";
 import type { MessageKey } from "@thinkrail/locales";
+import type { editor, IDisposable } from "monaco-editor/editor/editor.api.js";
 import type { ComponentType } from "react";
 import type { ResourceHost } from "../host";
 
@@ -56,6 +57,14 @@ export interface SurfaceReview {
 	onFocusHandled(): void;
 }
 
+/**
+ * A shared document a code surface should edit through instead of through its host's buffer: the host owns
+ * the CRDT, the renderer only attaches its model to it and detaches when the surface goes away.
+ */
+export interface ResourceCollaboration {
+	attach(editor: editor.IStandaloneCodeEditor, model: editor.ITextModel): IDisposable;
+}
+
 export interface ResourceViewProps {
 	resource: ResourceDescriptor;
 	content: ResourceContent;
@@ -67,6 +76,8 @@ export interface ResourceViewProps {
 	editable?: boolean;
 	onChange?(content: string): void;
 	onSave?(): void;
+	/** Present only when this file is open as a shared Team Space file. */
+	collaboration?: ResourceCollaboration;
 }
 
 export interface HunkActions {

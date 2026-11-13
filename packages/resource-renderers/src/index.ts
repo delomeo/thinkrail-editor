@@ -29,6 +29,7 @@ export {
 	outdatedReason,
 	PENDING_TEXT_META,
 	type ResourceAnchorCapability,
+	type ResourceCollaboration,
 	type ResourceContent,
 	type ResourceDescriptor,
 	type ResourceDiffProps,

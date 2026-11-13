@@ -13,6 +13,7 @@ export type {
 	HunkActions,
 	HunkTriage,
 	ResourceAnchorCapability,
+	ResourceCollaboration,
 	ResourceContent,
 	ResourceDescriptor,
 	ResourceDiffProps,

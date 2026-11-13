@@ -3,15 +3,19 @@ import type { editor, IDisposable } from "monaco-editor/editor/editor.api.js";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { type ResourceHost, useResourceHost, useResourcePreferences } from "../host";
 import type { ResourceDescriptor, ResourceViewProps, SurfaceReview } from "../registry";
+import { currentEditorSettings, publishEditorSettings } from "./editorSettings";
+import { attachIndentRainbow } from "./indentRainbow";
 import { MonacoReviewZones } from "./MonacoReviewZones";
 import { decorateEditorContextMenus } from "./monacoMenuIcons";
 import {
+	attachLanguageServices,
 	createFileEditor,
 	disposeFileEditor,
 	ensureMonaco,
 	fileEditorOptions,
 	languageForPath,
 	revealLineNow,
+	revealPendingTarget,
 	SAVE_FILE_KEYBINDING,
 	syncFileModel,
 	warmLanguage,
@@ -48,16 +52,21 @@ export default function MonacoEditor({
 	editable = false,
 	onChange,
 	onSave,
+	collaboration,
 }: ResourceViewProps) {
 	const t = useT();
-	const { fileLineWidth, fileLineWidthBounded } = useResourcePreferences();
-	ensureMonaco(useResourceHost().code);
+	const host = useResourceHost();
+	const preferences = useResourcePreferences();
+	ensureMonaco(host.code);
 	const scope = useId().replace(/[^\w-]/g, "");
 	const path = resource.path;
 	const text = content.kind === "text" ? content.text : "";
+	// Only the editing surface claims the file's own `file://` model, and the host is what knows where
+	// the file actually is.
+	const filePath = editable ? host.filePath(resource.workspaceId, path) : undefined;
 	const commentLabel = t("review.widget.commentOnSelection");
 	const saveLabel = t("common.save");
-	const options = fileEditorOptions(t, fileLineWidth, fileLineWidthBounded, path, editable);
+	const options = fileEditorOptions(t, preferences, path, editable);
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const commentingRef = useRef<ReviewCommenting | null>(null);
 	const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
@@ -65,11 +74,15 @@ export default function MonacoEditor({
 	const decorationsRef = useRef<string[]>([]);
 	const freshMountRef = useRef(false);
 	const saveActionRef = useRef<IDisposable | null>(null);
+	const lspRef = useRef<IDisposable | null>(null);
+	const indentRef = useRef<IDisposable | null>(null);
+	const sharedRef = useRef<IDisposable | null>(null);
 	const appliedRef = useRef({ scope, path, text, options });
 	const latestRef = useRef({
 		scope,
 		path,
 		text,
+		filePath,
 		options,
 		commentLabel,
 		viewState,
@@ -78,6 +91,7 @@ export default function MonacoEditor({
 		editable,
 		onChange,
 		onSave,
+		collaboration,
 	});
 	const [reviewZones, setReviewZones] = useState<MonacoReviewZoneState>({
 		threads: [],
@@ -89,6 +103,7 @@ export default function MonacoEditor({
 			scope,
 			path,
 			text,
+			filePath,
 			options,
 			commentLabel,
 			viewState,
@@ -97,6 +112,7 @@ export default function MonacoEditor({
 			editable,
 			onChange,
 			onSave,
+			collaboration,
 		};
 	});
 
@@ -111,6 +127,27 @@ export default function MonacoEditor({
 				})
 			: null;
 	};
+
+	// Only the mount that holds the file's own `file://` model asks for language services: a server
+	// answers nothing about a document it cannot locate. Colourized indent guides belong to every model.
+	const attachToModel = (codeEditor: editor.IStandaloneCodeEditor): void => {
+		lspRef.current?.dispose();
+		indentRef.current?.dispose();
+		const model = codeEditor.getModel();
+		lspRef.current =
+			model?.uri.scheme === "file"
+				? attachLanguageServices(model, host, resource.workspaceId)
+				: null;
+		indentRef.current =
+			model === null
+				? null
+				: attachIndentRainbow(codeEditor, model, () => currentEditorSettings().indentRainbow);
+	};
+
+	// The host's editor settings reach every live code surface, not only the one that re-rendered.
+	useLayoutEffect(() => {
+		publishEditorSettings(preferences.editor);
+	}, [preferences.editor]);
 
 	useLayoutEffect(() => {
 		const container = containerRef.current;
@@ -136,10 +173,12 @@ export default function MonacoEditor({
 		});
 		applySaveAction(codeEditor, mount.editable);
 		if (isEditorViewState(mount.viewState)) codeEditor.restoreViewState(mount.viewState);
+		revealPendingTarget(codeEditor, mount.path);
 		const threads = mount.review ? attachReviewThreads(codeEditor, setReviewZones) : null;
 		const commenting = threads
 			? attachReviewCommenting(codeEditor, threads, mount.commentLabel)
 			: null;
+		attachToModel(codeEditor);
 		threadsRef.current = threads;
 		commentingRef.current = commenting;
 		return () => {
@@ -155,11 +194,29 @@ export default function MonacoEditor({
 			commentingRef.current = null;
 			editorRef.current = null;
 			decorationsRef.current = [];
+			lspRef.current?.dispose();
+			lspRef.current = null;
+			indentRef.current?.dispose();
+			indentRef.current = null;
 			disposeFileEditor(codeEditor);
 		};
 	}, []);
 
+	// A shared file follows the seam, not the mount: sharing the file already on screen binds it, and leaving
+	// the room unbinds it, without remounting the editor.
 	useLayoutEffect(() => {
+		const codeEditor = editorRef.current;
+		const model = codeEditor?.getModel() ?? null;
+		sharedRef.current?.dispose();
+		sharedRef.current = null;
+		if (collaboration === undefined || codeEditor === null || model === null) return;
+		sharedRef.current = collaboration.attach(codeEditor, model);
+	}, [collaboration]);
+
+	useLayoutEffect(() => {
+		// A bound model answers to the shared document, not to the buffer that described the file: re-writing it
+		// here would overwrite what a teammate just typed.
+		if (collaboration !== undefined) return;
 		const codeEditor = editorRef.current;
 		const applied = appliedRef.current;
 		if (
@@ -168,7 +225,14 @@ export default function MonacoEditor({
 		) {
 			return;
 		}
-		syncFileModel(codeEditor, { scope, path, text }, applied.text);
+		const previousModel = codeEditor.getModel();
+		syncFileModel(codeEditor, { scope, path, text, filePath }, applied.text);
+		// The language follows the path, so a swapped model is a different document: re-attaching here is
+		// what keeps the file that left the screen from holding its language server open.
+		if (codeEditor.getModel() !== previousModel) {
+			attachToModel(codeEditor);
+			revealPendingTarget(codeEditor, path);
+		}
 		appliedRef.current = { ...applied, scope, path, text };
 	}, [scope, path, text]);
 

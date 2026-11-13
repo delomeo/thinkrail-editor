@@ -18,6 +18,8 @@ const host: ResourceHost = {
 	markdown: () => null,
 	code: { languages: [], languageId: () => null, theme: () => ({ name: "test", settings: [] }) },
 	bytesUrl: () => "",
+	filePath: () => undefined,
+	workspacePath: () => undefined,
 	openFile: () => {},
 	openComparison: () => {},
 	readFile: async () => ({ content: "" }),

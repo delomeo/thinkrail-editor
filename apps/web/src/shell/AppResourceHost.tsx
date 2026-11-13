@@ -17,7 +17,7 @@ import { openFileComparisonInTab, openFileInTab } from "../panels/openTabs";
 import { resourceBytesUrl } from "../panels/resourcePane";
 import { SendReviewButton } from "../panels/SendReviewButton";
 import { useFileReview } from "../panels/useReviewCommenting";
-import { selectFileChangeSince, useAppStore } from "../store";
+import { selectFileChangeSince, selectWorkspaceById, useAppStore } from "../store";
 import { resolveThinkrailShikiTheme } from "../themes";
 import { getTransport } from "../transport";
 
@@ -39,6 +39,12 @@ const HOST: ResourceHost = {
 		theme: (options) => resolveThinkrailShikiTheme({ ...options, toHex: cssColorToHex }),
 	},
 	bytesUrl: resourceBytesUrl,
+	filePath: (workspaceId, path) => {
+		const root = selectWorkspaceById(useAppStore.getState(), workspaceId)?.worktreePath;
+		return root === undefined ? undefined : `${root}/${path}`;
+	},
+	workspacePath: (workspaceId) =>
+		selectWorkspaceById(useAppStore.getState(), workspaceId)?.worktreePath,
 	openFile: (workspaceId, path, options) => {
 		void openFileInTab(workspaceId, path, options?.keep ? "keep" : "preview");
 	},
@@ -58,10 +64,12 @@ const HOST: ResourceHost = {
 export function AppResourceHost({ children }: { children: ReactNode }) {
 	const fileLineWidth = useAppStore((state) => state.fileLineWidth);
 	const fileLineWidthBounded = useAppStore((state) => state.fileLineWidthBounded);
+	const uiScale = useAppStore((state) => state.uiScale);
+	const editor = useAppStore((state) => state.editor);
 	const mobile = usePhoneViewport();
 	const preferences = useMemo<ResourcePreferences>(
-		() => ({ fileLineWidth, fileLineWidthBounded }),
-		[fileLineWidth, fileLineWidthBounded],
+		() => ({ fileLineWidth, fileLineWidthBounded, uiScale, editor }),
+		[fileLineWidth, fileLineWidthBounded, uiScale, editor],
 	);
 	const environment = useMemo<ResourceEnvironment>(() => ({ mobile }), [mobile]);
 	return (
