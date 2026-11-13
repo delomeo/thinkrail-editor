@@ -451,8 +451,10 @@ and shows them as two taskbar buttons (blackboardsh/electrobun#514). The desktop
 itself:
 
 - **Process ID.** The first thing startup does, before any window, is set an explicit per-channel ID
-  derived from the product name: `JetBrains.ThinkRail`, `JetBrains.ThinkRail.Nightly`,
-  `JetBrains.ThinkRail.Dev`. Stable and nightly stay separate apps.
+  derived from the product name: `ThinkRail`, `ThinkRail.Nightly`,
+  `ThinkRail.Dev`. Stable and nightly stay separate apps. Changing the ID re-groups taskbar pins made by
+  builds that used the earlier `JetBrains.` prefix: only shortcuts whose target is this install's launcher
+  are re-stamped.
 - **Shortcut IDs.** Once the main window first reaches `dom-ready` and readiness is reported, the desktop
   writes the same ID onto every shortcut whose target is this install's `bin\launcher.exe`:
   - the Start-menu shortcut Electrobun records in `<channel root>\.electrobun-uninstall.json`
@@ -519,7 +521,11 @@ publication remains release-owned and gated by the target policy.
 
 ### Signing
 
-Signing and notarization use JetBrains-provided services through the private release coordinator;
+This section describes the upstream signed pipeline. Builds packaged in this repository are unsigned and
+not notarized: `postBuild` brands the PE files with ThinkRail's own version metadata and no service
+credential is involved, so a packaged app here carries no signature a user must remove from quarantine.
+
+Signing and notarization upstream use JetBrains-provided services through the private release coordinator;
 public builds contain neither service credentials nor a new Apple-login/keychain flow. Windows coverage
 signs the setup stub and every PE file in its adjacent payload, so the launcher, `bun.exe`, the framework
 DLLs and the bundled `uninstall` helper that installs and applies updates all carry a JetBrains signature.

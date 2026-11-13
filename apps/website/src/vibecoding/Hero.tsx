@@ -48,7 +48,7 @@ export function Hero({ title, positioning }: { title: string; positioning: Posit
 
 						<Reveal delay={200}>
 							<div className="mt-9 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
-								<ActionButton href="https://github.com/JetBrains/thinkrail" variant="light">
+								<ActionButton href="https://github.com/delomeo/thinkrail-editor" variant="light">
 									<GithubIcon className="h-6 w-6 shrink-0" />
 									Explore on GitHub
 								</ActionButton>
@@ -65,11 +65,6 @@ export function Hero({ title, positioning }: { title: string; positioning: Posit
 
 				<Reveal delay={300}>
 					<div className="mt-14 flex flex-wrap items-center justify-center gap-2.5 sm:mt-28 sm:justify-start">
-						<span className="rounded-sm border border-border px-3 py-1.5 text-[15.6px] text-text-muted">
-							JetBrains InnovationHub
-						</span>
-						<span aria-hidden className="basis-full sm:hidden" />
-
 						<span className="rounded-sm border border-border px-3 py-1.5 text-[15.6px] text-text-muted">
 							Apache-2.0
 						</span>

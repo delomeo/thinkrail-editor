@@ -4,8 +4,8 @@ import { windowsFileIdentity } from "./windowsIdentity";
 test("names each channel and maps its version to four numeric parts", () => {
 	expect(windowsFileIdentity({ version: "0.2.0", channel: "stable" })).toEqual({
 		productName: "ThinkRail",
-		companyName: "JetBrains s.r.o.",
-		copyright: "Copyright © 2026 JetBrains s.r.o.",
+		companyName: "ThinkRail",
+		copyright: "Copyright © 2026 ThinkRail",
 		fileVersion: "0.2.0.0",
 		fileVersionParts: [0, 2, 0, 0],
 	});

@@ -11,9 +11,9 @@ import {
 } from "./windowsTaskbarIdentity";
 
 test("names one AppUserModelID per channel", () => {
-	expect(desktopAppUserModelId("stable")).toBe("JetBrains.ThinkRail");
-	expect(desktopAppUserModelId("nightly")).toBe("JetBrains.ThinkRail.Nightly");
-	expect(desktopAppUserModelId("dev")).toBe("JetBrains.ThinkRail.Dev");
+	expect(desktopAppUserModelId("stable")).toBe("ThinkRail");
+	expect(desktopAppUserModelId("nightly")).toBe("ThinkRail.Nightly");
+	expect(desktopAppUserModelId("dev")).toBe("ThinkRail.Dev");
 	expect(() => desktopAppUserModelId("beta")).toThrow('unknown release channel "beta"');
 });
 
@@ -112,7 +112,7 @@ test("stamps only existing shortcuts to this launcher that carry another ID", ()
 			"C:\\Users\\me\\AppData\\Local\\ai.thinkrail.app\\stable\\app\\bin\\launcher.exe";
 		const ids = new Map<string, string | null>([
 			[ours, null],
-			[current, "JetBrains.ThinkRail"],
+			[current, "ThinkRail"],
 			[other, null],
 		]);
 		const closed: string[] = [];
@@ -133,13 +133,13 @@ test("stamps only existing shortcuts to this launcher that carry another ID", ()
 			const result = stampTaskbarShortcuts(
 				[ours, current, other, broken, join(root, "missing.lnk")],
 				launcher,
-				"JetBrains.ThinkRail",
+				"ThinkRail",
 				open,
 			);
 
 			expect(result.stamped).toEqual([ours]);
 			expect(result.failures).toEqual([new Error("not a shortcut")]);
-			expect(ids.get(ours)).toBe("JetBrains.ThinkRail");
+			expect(ids.get(ours)).toBe("ThinkRail");
 			expect(ids.get(other)).toBeNull();
 			expect(writableOpens).toEqual([ours]);
 			expect(closed).toEqual([ours, ours, current, other]);
@@ -167,8 +167,8 @@ function powershell(script: string): string {
 test.skipIf(process.platform !== "win32")("sets the process AppUserModelID", () => {
 	const shell = loadWindowsShellApi();
 	expect(loadWindowsShellApi()).toBe(shell);
-	shell.setProcessAppUserModelId("JetBrains.ThinkRail.Test");
-	expect(shell.processAppUserModelId()).toBe("JetBrains.ThinkRail.Test");
+	shell.setProcessAppUserModelId("ThinkRail.Test");
+	expect(shell.processAppUserModelId()).toBe("ThinkRail.Test");
 });
 
 test.skipIf(process.platform !== "win32")(
@@ -191,7 +191,7 @@ test.skipIf(process.platform !== "win32")(
 				);
 			}
 			const shell = loadWindowsShellApi();
-			const id = "JetBrains.ThinkRail.Test";
+			const id = "ThinkRail.Test";
 			shell.withComApartment(() => {
 				const opened = shell.openShortcut(ours);
 				try {

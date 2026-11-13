@@ -1,9 +1,9 @@
 const installScriptUrls = {
-	sh: "https://raw.githubusercontent.com/JetBrains/thinkrail/main/install.sh",
-	powershell: "https://raw.githubusercontent.com/JetBrains/thinkrail/main/install.ps1",
+	sh: "https://raw.githubusercontent.com/delomeo/thinkrail-editor/main/install.sh",
+	powershell: "https://raw.githubusercontent.com/delomeo/thinkrail-editor/main/install.ps1",
 } as const;
 
-const releaseDownloadBase = "https://github.com/JetBrains/thinkrail/releases/latest/download";
+const releaseDownloadBase = "https://github.com/delomeo/thinkrail-editor/releases/latest/download";
 const desktopDownload = (asset: string) => `${releaseDownloadBase}/${asset}`;
 const unix = `curl -fsSL ${installScriptUrls.sh} | bash`;
 const powershell = `irm ${installScriptUrls.powershell} | iex`;

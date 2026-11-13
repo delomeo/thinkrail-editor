@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { heroDownloadTarget } from "./heroDownload";
 
-const release = "https://github.com/JetBrains/thinkrail/releases/latest/download";
+const release = "https://github.com/delomeo/thinkrail-editor/releases/latest/download";
 
 describe("heroDownloadTarget", () => {
 	test("downloads the Apple Silicon disk image on macOS", () => {

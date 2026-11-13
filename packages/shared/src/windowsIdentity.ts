@@ -32,8 +32,8 @@ export function windowsFileIdentity(release: {
 	const fileVersionParts = windowsVersionParts(release.version);
 	return {
 		productName,
-		companyName: "JetBrains s.r.o.",
-		copyright: "Copyright © 2026 JetBrains s.r.o.",
+		companyName: "ThinkRail",
+		copyright: "Copyright © 2026 ThinkRail",
 		fileVersion: fileVersionParts.join("."),
 		fileVersionParts,
 	};

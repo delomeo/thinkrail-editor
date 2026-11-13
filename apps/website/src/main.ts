@@ -107,7 +107,7 @@ const TERMINAL_LOGO: readonly string[] = [
 	"           T–––R  ^–––5  :––––:            R––––:  ~–––––^",
 ];
 
-const GITHUB_URL = "https://github.com/JetBrains/thinkrail";
+const GITHUB_URL = "https://github.com/delomeo/thinkrail-editor";
 const INSTALL_TARGET: Record<InstallPlatform, string> = {
 	macos: "macos-arm64",
 	linux: "linux",
@@ -499,24 +499,6 @@ if (navToggle && railRight && backdrop) {
 	for (const row of treeRows) row.addEventListener("click", () => setOpen(false));
 }
 
-const starBadges = document.querySelectorAll<HTMLElement>(".gh-stars");
-if (starBadges.length > 0) {
-	fetch("https://api.github.com/repos/JetBrains/thinkrail")
-		.then((response) => (response.ok ? response.json() : null))
-		.then((data: { stargazers_count?: number } | null) => {
-			if (typeof data?.stargazers_count !== "number") return;
-			const n = data.stargazers_count;
-			const formatted = n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-			for (const stars of starBadges) {
-				const count = stars.querySelector<HTMLElement>("[data-gh-stars-count]");
-				if (count) count.textContent = formatted;
-				else stars.textContent = formatted;
-				stars.hidden = false;
-			}
-		})
-		.catch(() => {});
-}
-
 const railNote = document.getElementById("rail-note");
 const railNoteDismiss = document.getElementById("rail-note-dismiss");
 if (railNote && railNoteDismiss) {
@@ -572,7 +554,7 @@ if (mockElements.length > 0) {
 
 	const cta = document.createElement("div");
 	cta.className = "mock-tooltip-cta";
-	cta.innerHTML = `<a class="btn" href="https://github.com/JetBrains/thinkrail" target="_blank" rel="noopener noreferrer">
+	cta.innerHTML = `<a class="btn" href="https://github.com/delomeo/thinkrail-editor" target="_blank" rel="noopener noreferrer">
 		<svg class="i i-fill" aria-hidden="true"><use href="#i-github" /></svg>
 		Open on GitHub
 	</a>`;

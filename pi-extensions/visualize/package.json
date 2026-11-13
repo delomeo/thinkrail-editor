@@ -16,10 +16,10 @@
 	"homepage": "https://thinkrail.ai",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/JetBrains/thinkrail.git",
+		"url": "git+https://github.com/delomeo/thinkrail-editor.git",
 		"directory": "pi-extensions/visualize"
 	},
-	"bugs": "https://github.com/JetBrains/thinkrail/issues",
+	"bugs": "https://github.com/delomeo/thinkrail-editor/issues",
 	"author": "ThinkRail",
 	"files": [
 		"index.ts",

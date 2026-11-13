@@ -12,7 +12,7 @@ import {
 const { values } = parseArgs({
 	options: {
 		days: { type: "string", default: "14" },
-		repo: { type: "string", default: "JetBrains/thinkrail" },
+		repo: { type: "string", default: "delomeo/thinkrail-editor" },
 		workflow: { type: "string", default: "ci.yml" },
 		concurrency: { type: "string", default: "8" },
 	},

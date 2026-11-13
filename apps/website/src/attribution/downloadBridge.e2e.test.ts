@@ -22,11 +22,11 @@ const bridgeId = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA";
 const fallbackBridgeId = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFA";
 const journeyId = "01890f47-75a3-4d8f-9a72-4f0e35be292b";
 const now = 2_000_000_000_000;
-const repositoryUrl = "https://github.com/JetBrains/thinkrail";
+const repositoryUrl = "https://github.com/delomeo/thinkrail-editor";
 const desktopUrl =
-	"https://github.com/JetBrains/thinkrail/releases/latest/download/thinkrail-desktop-darwin-arm64.dmg";
+	"https://github.com/delomeo/thinkrail-editor/releases/latest/download/thinkrail-desktop-darwin-arm64.dmg";
 const linuxUrl =
-	"https://github.com/JetBrains/thinkrail/releases/latest/download/thinkrail-desktop-linux-x64.tar.gz";
+	"https://github.com/delomeo/thinkrail-editor/releases/latest/download/thinkrail-desktop-linux-x64.tar.gz";
 
 type Capture = <EventName extends keyof WebsiteAnalyticsEventProperties>(
 	event: EventName,

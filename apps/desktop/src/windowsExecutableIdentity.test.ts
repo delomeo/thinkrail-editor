@@ -98,10 +98,10 @@ for (const [label, executable] of [
 		expect(entries.filter(({ type }) => type === 3)).toHaveLength(iconSizes.length);
 		const [version] = ResEdit.Resource.VersionInfo.fromEntries(entries);
 		expect(version?.getStringValues({ lang: 1033, codepage: 1200 })).toEqual({
-			CompanyName: "JetBrains s.r.o.",
+			CompanyName: "ThinkRail",
 			FileDescription: "ThinkRail Nightly",
 			ProductName: "ThinkRail Nightly",
-			LegalCopyright: "Copyright © 2026 JetBrains s.r.o.",
+			LegalCopyright: "Copyright © 2026 ThinkRail",
 			FileVersion: "0.3.0.6",
 			ProductVersion: "0.3.0.6",
 			OriginalFilename: "bun.exe",

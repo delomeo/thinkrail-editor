@@ -437,11 +437,6 @@ code {
 	text-decoration: none;
 }
 
-.gh-stars {
-	font-family: var(--font-mono);
-	font-size: 12px;
-}
-
 .nav-toggle {
 	display: none;
 }
@@ -863,12 +858,6 @@ a.tree-row:hover {
 	color: var(--muted);
 }
 
-.pill-accent {
-	border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-	color: var(--accent);
-	background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-
 .hero-title {
 	font-family: var(--font-display);
 	font-weight: 400;
@@ -877,11 +866,6 @@ a.tree-row:hover {
 	letter-spacing: 0.5px;
 	margin: 36px 0 32px;
 	color: var(--accent);
-}
-
-[data-theme="light"] .hero-kicker .pill-accent {
-	--accent: var(--text);
-	background: transparent;
 }
 
 /* p.<class> ties with `.file-section p` on specificity and wins by source order — no !important. */
@@ -1238,20 +1222,6 @@ a.hero-download-other .i {
 a.hero-download-other:hover {
 	color: var(--text);
 	text-decoration: none;
-}
-
-.hero-ctas .gh-stars:not([hidden]) {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	margin-left: 2px;
-	padding-left: 9px;
-	border-left: 1px solid var(--border2);
-}
-
-.hero-ctas .gh-stars .i {
-	width: 12px;
-	height: 12px;
 }
 
 .btn {

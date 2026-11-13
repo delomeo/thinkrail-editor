@@ -107,7 +107,7 @@ imports nothing, so the vibecoding island can reuse it without reaching the IDE 
   system-follow, legacy `darcula`/`gruvbox` values normalize to dark); the inline FOUC guard in
   BaseHead is its declared twin — a behavior change updates both.
 - **A colour with a contrast floor gets a `:root` token, never the region-inherited `--accent`.**
-  A region may re-point `--accent` (the light theme's kicker pill does; the hero once did), so
+  A region may re-point `--accent` (the hero once did), so
   descendants reading it can inherit a value chosen for another surface. `--link` and `--focus-ring`
   are declared once on `:root` as `var(--accent)`, which resolves against the *root* accent —
   per-theme, but out of reach of a region override.
@@ -120,7 +120,7 @@ imports nothing, so the vibecoding island can reuse it without reaching the IDE 
   hovered-fill label contrast.
 - All marketing copy is static DOM text; JS only *enhances* (scroll-spy, the derived editor-tab strip
   and its scroll-spy/click navigation, terminal typing, chat streaming replay, theme switcher, copy
-  buttons, star count, install-platform selection). The page must read complete with JS disabled (the
+  buttons, install-platform selection). The page must read complete with JS disabled (the
   editor tabs are a JS-built navigation affordance over content that is already reachable by scrolling
   and via the file tree), and animations are skipped under `prefers-reduced-motion`.
 - **Enhancement behaviors owned by `main.ts`** (the code carries no rationale — this is it):
@@ -141,8 +141,8 @@ imports nothing, so the vibecoding island can reuse it without reaching the IDE 
     (from `data-mock-label`), `aria-expanded` + `aria-describedby` on open — no `aria-haspopup`
     (a `tooltip` is not an allowed popup value). The `.rail-tabs` callout anchors to the panel's
     live edge; others place beside the trigger, clamped to the viewport and repositioned on resize.
-- The hero install control is three actions in a row: **Download**, **View on GitHub** (the existing
-  star count fills in beside the label), and **Join our Discord**. Download starts the file for
+- The hero install control is three actions in a row: **Download**, **View on GitHub**, and **Join our
+  Discord**. Download starts the file for
   the detected desktop: the Apple Silicon DMG on macOS, the Windows x64 ZIP on Windows, and a Linux
   archive. Linux uses the ARM64 archive only when a browser hint explicitly says ARM; otherwise the
   button downloads the x64 archive. When the desktop is unknown, including with JavaScript off,
@@ -238,7 +238,7 @@ nothing. That open is browsing, not install intent: a
 primary-button click on a `[data-copy]` control whose value is a known install command emits
 `install_command_copied` with its `sh`/`powershell`/`cmd` shell and hero, install-section, or blog-post location
 (other copy values emit nothing; selecting and copying the text manually is not observed). Any other
-link into the `JetBrains/thinkrail` repository (exact repo, `#`/`?` suffix, or sub-path; never a
+link into the project's GitHub repository (exact repo, `#`/`?` suffix, or sub-path; never a
 sibling repository or a desktop alias) emits `github_clicked` with a `repo`/`releases`/`other` target
 and a location from the containing blog post, final CTA, quick start, install section, hero (`#readme`
 or the vibecoding `#top`), header, footer, terminal, or mock-callout tooltip — `other` when none

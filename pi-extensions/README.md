@@ -85,13 +85,13 @@ provenance, which only a CI provider can generate. The automated release keeps p
 Then register the Trusted Publisher — from the CLI (same login):
 
 ```bash
-npm trust github @thinkrail/pi-<name> --file release-pi-packages.yml --repo JetBrains/thinkrail \
+npm trust github @thinkrail/pi-<name> --file release-pi-packages.yml --repo delomeo/thinkrail-editor \
   --env npm-release --allow-publish --allow-stage-publish
 npm trust list @thinkrail/pi-<name>             # expect permissions: publish, stage publish
 ```
 
 or on npmjs.com → the package → **Settings → Trusted Publisher → GitHub Actions** with the same values
-(`JetBrains` / `thinkrail` / `release-pi-packages.yml` / `npm-release`) and **Allow `npm publish` ticked**.
+(`delomeo` / `thinkrail-editor` / `release-pi-packages.yml` / `npm-release`) and **Allow `npm publish` ticked**.
 
 Two npm rules decide whether that configuration ever works:
 

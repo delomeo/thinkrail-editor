@@ -15,7 +15,7 @@ export default {
 		exitOnLastWindowClosed: true,
 	},
 	release: {
-		baseUrl: "https://github.com/JetBrains/thinkrail/releases/download/desktop-updates",
+		baseUrl: "https://github.com/delomeo/thinkrail-editor/releases/download/desktop-updates",
 		generatePatch: false,
 	},
 	build: {

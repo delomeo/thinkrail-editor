@@ -58,18 +58,11 @@ the CLI `thinkrail` app that opens in your browser. The difference is purely a m
 are you a person who prefers a desktop icon you can click and a distinct window for your ThinkRail app? 
 Or is the terminal the first thing you open after starting your laptop, so that you would rather start ThinkRail 
 by typing a command? In any case, before you make the decision, try out the desktop app. 
-Go to [**our main webpage**](https://jb.gg/osk2n7) and choose an installation package for your operating system: macOS, Windows, or Linux (Ubuntu) - or simply use the widget at the bottom of this blog post.
+Go to [**our main webpage**](https://thinkrail.ai/) and choose an installation package for your operating system: macOS, Windows, or Linux (Ubuntu) - or simply use the widget at the bottom of this blog post.
 
 By the way, find us on social media platforms: [**X/Twitter**](https://x.com/ThinkRailAI), [**YouTube**](https://www.youtube.com/@ThinkRailAI), and [**TikTok**](https://www.tiktok.com/@thinkrail).
-You can also browse [**our GitHub repository**](https://github.com/JetBrains/thinkrail),
+You can also browse [**our GitHub repository**](https://github.com/delomeo/thinkrail-editor),
 take [**our survey**](https://forms.gle/es1ksqAax6hnDWCP8), and join [**our Discord server**](https://thinkrail.ai/discord)
 to say "hi!" and let us know what you think. Your feedback is greatly appreciated.
 
 Happy developing!
-
-------
-
-
-
-*ThinkRail is backed by JetBrains, leveraging their expertise in building developer tools that are both powerful 
-and intuitive.*

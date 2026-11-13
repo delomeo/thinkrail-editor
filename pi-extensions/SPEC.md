@@ -76,8 +76,8 @@ Required before a package's first publish, and the definition of "works in vanil
 `@changesets/cli` (catalog-pinned; `privatePackages: { version: false, tag: false }` so only this root is
 ever versioned or tagged). A PR that changes a published package adds a changeset (`bun changeset`).
 **Versioning is a human step**: a maintainer runs `bun run release:version` (`changeset version` +
-`bun install`) on a branch and opens an ordinary PR — JetBrains' org policy forbids Actions from creating
-PRs, and an ordinary PR also gets normal CI, which a bot-opened one would not. When that PR is on `main`,
+`bun install`) on a branch and opens an ordinary PR — an ordinary PR also gets normal CI, which a
+bot-opened one would not. When that PR is on `main`,
 `.github/workflows/release-pi-packages.yml` runs in the `npm-release` environment with `id-token: write`:
 re-runs the parity gate, then `bun run release:publish` (`scripts/publish-pi-packages.ts`), which exits
 early while any changeset is still pending (versions not bumped yet) and otherwise publishes
