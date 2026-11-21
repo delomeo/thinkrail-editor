@@ -27,11 +27,13 @@ host — two copies coexist on purpose and the wiring PR deletes the old one. A 
   scope is deliberate: unscoped `pi-*` names collide (`pi-subagents` is
   third-party) and the scope attributes ownership in the
   `pi.dev/packages` gallery, which is an index of npm packages carrying the `pi-package` keyword — there
-  is no registry to submit to.
+  is no registry to submit to. The gallery enumerates npm's `keywords:pi-package` search, which pages only
+  to offset 5000, so a valid package can be missing from its listing while its direct
+  `pi.dev/packages/<name>` page works (earendil-works/pi#7885); link the direct page.
 - **Two shapes.** An *installable pi extension* carries a `pi` manifest (`extensions: ["./index.ts"]`,
-  `skills` where present, `image`) and the `pi-package` keyword. A *portable library* (e.g. delegation)
-  has named exports only — no manifest, no keyword, never a no-op factory — and is verified through its
-  packed consumer.
+  `skills` where present, and a `video` gallery preview) and the `pi-package` keyword. A *portable
+  library* (e.g. delegation) has named exports only — no manifest, no keyword, never a no-op factory —
+  and is verified through its packed consumer.
 - **Raw TypeScript, no build step** (pi loads entrypoints through jiti). `files` is a package-specific
   whitelist of everything the entrypoints and `exports` transitively import, tests excluded; `exports`
   preserves every subpath an existing consumer uses (e.g. `./core`). Pi SDK packages are
@@ -97,7 +99,7 @@ allow `npm publish` (npm's post-2026-09 default is stage-only) and is validated 
 publish within 48 hours of its creation — the manual bootstrap does not count — so it is created right
 before the package's next version PR merges, not at bootstrap. Operational detail: `pi-extensions/README.md`.
 
-Order: visualize → ask-user-question → delegation + subagents → background-commands → spec-graph →
+Order: visualize → ask-user-question → next-steps → delegation + subagents → background-commands → spec-graph →
 todos. Not published:
 `pi-thinkrail-workflow` (workspace-internal), `pi-dag` (until it has a consumer).
 
@@ -113,4 +115,5 @@ todos. Not published:
 | package | shape | notes |
 | --- | --- | --- |
 | `visualize` | extension | `visualize` tool; `lovely-mermaid` for TUI box-drawing and the best-effort vanilla validation; exports `createVisualizeExtension({ validateMermaid })` so an embedder can inject a strict validator — ThinkRail does, from [[module-ext-visualize]]. Detail: [[module-pi-visualize]]. |
-| `ask-user-question` | extension | `ask_user_question` tool: a terminal questionnaire in pi's interactive mode, one dialog per question in RPC hosts; exports `createAskUserQuestionExtension({ ask, guidance })` so an embedder can answer through its own UI, and a runtime-import-free `./core`. ThinkRail composes it from [[module-ext-ask-user-question]] with an asker over its answer mailbox. Detail: [[module-pi-ask-user-question]]. |
+| `ask-user-question` | extension | `ask_user_question` tool: a terminal questionnaire in pi's interactive mode, one dialog per question in RPC hosts; exports `createAskUserQuestionExtension({ ask, guidance, filePreviews, checkFile })` so an embedder can answer through its own UI and opt into file previews with its own path check (off in vanilla pi), and a runtime-import-free `./core`. ThinkRail composes it from [[module-ext-ask-user-question]] with an asker over its answer mailbox and the host's workspace-file check. Detail: [[module-pi-ask-user-question]]. |
+| `next-steps` | extension | `suggest_next_steps` tool: one-click next messages at the end of a finished turn, shown in a row above pi's editor and sent with Alt+1…9 (interactive terminal only); ends the turn with `terminate: true`; exports `createNextStepsExtension({ guidance })` so an embedder can add its own wording; a runtime-import-free `./core` carries the branch rule hosts share. ThinkRail composes it from [[module-ext-next-steps]] with one extra guideline and draws chips instead. Detail: [[module-pi-next-steps]]. |

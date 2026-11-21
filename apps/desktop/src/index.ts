@@ -2,7 +2,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { NativeCommand, NativeQuitHint, NativeWindowState } from "@thinkrail/contracts";
+import type {
+	NativeCommand,
+	NativeOpenFileRequest,
+	NativeQuitHint,
+	NativeWindowState,
+} from "@thinkrail/contracts";
 import { resolveShellEnv } from "@thinkrail/shared/shellEnv";
 import { channel, posthogProjectKey, version } from "@thinkrail/shared/version";
 import Electrobun, {
@@ -20,9 +25,11 @@ import {
 	readMenuLabels,
 } from "./applicationMenu";
 import { attributionClaimOnFirstReadiness } from "./attributionReadiness";
+import { deliverDeepLinkWhenReady } from "./deepLinkBootstrap";
 import { desktopError, setDesktopErrorReporter } from "./errorReporting";
 import { installExternalNavigation, windowNavigationRules } from "./externalNavigation";
 import { createKeyStateReader } from "./keyState";
+import { readNativeClipboard } from "./nativeClipboard";
 import {
 	type DesktopDialogLabels,
 	readDialogLabels,
@@ -57,6 +64,7 @@ import {
 	createElectrobunUpdateController,
 	readPendingInstallVersion,
 } from "./updates";
+import { createWindowWithWebviewFocus } from "./webviewFocus";
 import {
 	desktopWindowChrome,
 	injectInitialWindowChrome,
@@ -250,7 +258,11 @@ async function start(): Promise<void> {
 		now: () => performance.now(),
 		every,
 	});
-	const commandGate = createRepeatGate({ isKeyDown: () => readKeys()?.keyDown ?? null, every });
+	const commandGate = createRepeatGate({
+		isKeyDown: () => readKeys()?.keyDown ?? null,
+		sinceKeyDown: () => readKeys()?.sinceKeyDown ?? null,
+		every,
+	});
 	ApplicationMenu.on("application-menu-clicked", (event) => {
 		const action = readMenuAction(event);
 		const target = menuTarget;
@@ -392,6 +404,12 @@ async function start(): Promise<void> {
 						...(input.silent === undefined ? {} : { silent: input.silent }),
 					});
 				},
+				readClipboard: () =>
+					readNativeClipboard({
+						availableFormats: () => Utils.clipboardAvailableFormats(),
+						readImage: () => Utils.clipboardReadImage(),
+						readText: () => Utils.clipboardReadText(),
+					}),
 			},
 			messages: {
 				titleBarDoubleClick: () => {
@@ -447,24 +465,26 @@ async function start(): Promise<void> {
 					injectInitialDesktopPreferences(preloadSource, initialPreferences),
 					windowChromePreloadSeed(windowChrome),
 				);
-	mainWindow = new BrowserWindow({
-		title: "ThinkRail",
-		url: neutral ? "about:blank" : `${origin}/${initialRoute}`,
-		preload,
-		...(neutral ? {} : { rpc }),
-		hidden:
-			process.env.THINKRAIL_DESKTOP_HIDDEN === "1" ||
-			process.env.THINKRAIL_DESKTOP_E2E_HOST === "1",
-		frame: { x: 80, y: 60, width: 1440, height: 920 },
-		...(neutral
-			? {}
-			: {
-					titleBarStyle: windowChrome.titleBarStyle,
-					...(windowChrome.trafficLightOffset
-						? { trafficLightOffset: windowChrome.trafficLightOffset }
-						: {}),
-				}),
-	});
+	mainWindow = createWindowWithWebviewFocus(
+		(options) => new BrowserWindow(options),
+		{
+			title: "ThinkRail",
+			url: neutral ? "about:blank" : `${origin}/${initialRoute}`,
+			preload,
+			...(neutral ? {} : { rpc }),
+			hidden: process.env.THINKRAIL_DESKTOP_HIDDEN === "1" || neutral,
+			frame: { width: 1440, height: 920 },
+			...(neutral
+				? {}
+				: {
+						titleBarStyle: windowChrome.titleBarStyle,
+						...(windowChrome.trafficLightOffset
+							? { trafficLightOffset: windowChrome.trafficLightOffset }
+							: {}),
+					}),
+		},
+		process.platform,
+	);
 	setWindowsWindowIcon(mainWindow);
 	if (!neutral) {
 		mainWindow.webview.setNavigationRules(windowNavigationRules(origin));
@@ -559,6 +579,12 @@ async function start(): Promise<void> {
 		command: (command) => rpc.send.nativeCommand({ command }),
 	};
 
+	const revealDeepLink = (request: NativeOpenFileRequest) => {
+		if (mainWindow.isMinimized()) mainWindow.unminimize();
+		mainWindow.show();
+		mainWindow.activate();
+		rpc.send.openFile(request);
+	};
 	let ready = false;
 	const startAttributionClaim = attributionClaimOnFirstReadiness(() =>
 		host.server.startAttributionClaim(),
@@ -568,6 +594,7 @@ async function start(): Promise<void> {
 		ready = true;
 		releaseStartupSplash?.();
 		startupSplash = undefined;
+		if (!neutral) deliverDeepLinkWhenReady(revealDeepLink);
 		startAttributionClaim();
 		updateController.start();
 		const readyPath = process.env.THINKRAIL_DESKTOP_READY_FILE;

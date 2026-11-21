@@ -19,6 +19,8 @@ describe("server extension registry", () => {
 			"@thinkrail/ext-visualize/server",
 			"@thinkrail/ext-ask-user-question/server",
 			"@thinkrail/ext-web-access/server",
+			"@thinkrail/ext-next-steps/server",
+			"@thinkrail/ext-outputs/server",
 		]);
 		expect(new Set(specifiers).size).toBe(specifiers.length);
 		for (const entry of serverExtensions) {
@@ -30,6 +32,8 @@ describe("server extension registry", () => {
 			"visualize",
 			"ask-user-question",
 			"web-access",
+			"next-steps",
+			"outputs",
 		]);
 	});
 
@@ -38,13 +42,20 @@ describe("server extension registry", () => {
 			registryInlineExtensions("extensions", undefined, serverExtensions, session).map((inline) =>
 				typeof inline === "function" ? "fn" : inline.name,
 			);
-		expect(names()).toEqual(["visualize", "web-access"]);
+		expect(names()).toEqual(["web-access", "next-steps"]);
 		expect(
 			names({
 				expectToolResponse: () => {},
 				awaitToolResponse: () => Promise.resolve({ kind: "deferred" as const }),
+				workspaceFiles: {
+					check: async () => {},
+					checkArtifacts: async (paths) => paths.map((path) => ({ path })),
+					ensureArtifactsDir: async () => {},
+					scratchDir: "",
+					artifactsDir: "",
+				},
 			}),
-		).toEqual(["visualize", "ask-user-question", "web-access"]);
+		).toEqual(["visualize", "ask-user-question", "web-access", "next-steps", "outputs"]);
 		expect(
 			registryInlineExtensions("childExtensions").map((inline) =>
 				typeof inline === "function" ? "fn" : inline.name,

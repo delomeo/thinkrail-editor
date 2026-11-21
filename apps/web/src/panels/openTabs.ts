@@ -1,4 +1,5 @@
 import type { GitDiffScope } from "@thinkrail/contracts";
+import { SOURCE_RENDERER_ID } from "@thinkrail/resource-renderers";
 import {
 	DOUBLE_CLICK_SETTLE_MS,
 	fileName,
@@ -19,6 +20,7 @@ import {
 	selectWorkspaceNavTick,
 	selectWorkspaceTick,
 	type TabIntent,
+	type TabOpenFocus,
 	useAppStore,
 } from "../store";
 import { getTransport } from "../transport";
@@ -28,15 +30,30 @@ function baseName(path: string): string {
 	return path.split("/").pop() || path;
 }
 
-const inFlight = new Map<
-	string,
-	{
-		intent: TabIntent;
-		claimPreview: boolean;
-		navigation: CenterNavigationStamp | null;
-		requestedAt: number;
-	}
->();
+interface ReadFlight {
+	intent: TabIntent;
+	claimPreview: boolean;
+	focus: TabOpenFocus | undefined;
+	navigation: CenterNavigationStamp | null;
+	requestedAt: number;
+	done: Promise<void>;
+}
+
+export interface OpenTabOptions {
+	focus?: TabOpenFocus;
+}
+
+export const KEYBOARD_OPEN: OpenTabOptions = { focus: "content" };
+
+export function treeOpenFocus(event: { detail: number }): OpenTabOptions {
+	return { focus: event.detail === 0 ? "content" : "none" };
+}
+
+function withFocus<T extends object>(options: T, focus: TabOpenFocus | undefined): T {
+	return focus ? { ...options, focus } : options;
+}
+
+const inFlight = new Map<string, ReadFlight>();
 
 function navTick(workspaceId: string): number {
 	return selectWorkspaceNavTick(useAppStore.getState(), workspaceId);
@@ -51,6 +68,7 @@ async function openReadTab<T>(
 	build: (payload: T, loadedTick: number) => EditorTab,
 	requestedNavigation?: CenterNavigationStamp | null,
 	claimPreview = false,
+	focus?: TabOpenFocus,
 ): Promise<void> {
 	const navigation =
 		requestedNavigation === undefined
@@ -63,9 +81,10 @@ async function openReadTab<T>(
 	if (pending) {
 		if (intent === "preview" || claimPreview) pending.claimPreview = true;
 		if (intent === "keep") pending.intent = "keep";
+		pending.focus = focus;
 		pending.navigation = navigation;
 		pending.requestedAt = navTick(workspaceId);
-		return;
+		return pending.done;
 	}
 	const cached = (store.tabsByWorkspace[workspaceId] ?? []).find(
 		(tab) =>
@@ -77,18 +96,36 @@ async function openReadTab<T>(
 			intent === "keep" &&
 			claimPreview &&
 			(!navigation || isCenterNavigationCurrent(store, workspaceId, navigation));
-		const options = layoutOpenOptionsForNavigation(store, workspaceId, navigation);
+		const options = withFocus(
+			layoutOpenOptionsForNavigation(store, workspaceId, navigation),
+			focus,
+		);
 		store.openTab(cached, intent, true, claim ? { ...options, claimPreview: true } : options);
 		return;
 	}
-	const flight = {
+	const loadedTick = selectWorkspaceTick(useAppStore.getState(), workspaceId);
+	const flight: ReadFlight = {
 		intent,
 		claimPreview: intent === "preview" || claimPreview,
+		focus,
 		navigation,
 		requestedAt: navTick(workspaceId),
+		done: Promise.resolve(),
 	};
 	inFlight.set(id, flight);
-	const loadedTick = selectWorkspaceTick(useAppStore.getState(), workspaceId);
+	flight.done = installRead(workspaceId, id, resourceIdentity, flight, loadedTick, read, build);
+	return flight.done;
+}
+
+async function installRead<T>(
+	workspaceId: string,
+	id: string,
+	resourceIdentity: string,
+	flight: ReadFlight,
+	loadedTick: number,
+	read: () => Promise<T>,
+	build: (payload: T, loadedTick: number) => EditorTab,
+): Promise<void> {
 	try {
 		const payload = await read();
 		const currentState = useAppStore.getState();
@@ -102,7 +139,10 @@ async function openReadTab<T>(
 				layoutResourceIdentity(tab) === resourceIdentity,
 		);
 		const tab = installedCache ?? build(payload, loadedTick);
-		const options = layoutOpenOptionsForNavigation(currentState, workspaceId, flight.navigation);
+		const options = withFocus(
+			layoutOpenOptionsForNavigation(currentState, workspaceId, flight.navigation),
+			flight.focus,
+		);
 		useAppStore
 			.getState()
 			.openTab(
@@ -124,6 +164,7 @@ export function openFileInTab(
 	reported: string,
 	intent: TabIntent,
 	requestedNavigation?: CenterNavigationStamp | null,
+	{ focus }: OpenTabOptions = {},
 ): Promise<void> {
 	const path = projectRelativePath(
 		reported,
@@ -147,7 +188,19 @@ export function openFileInTab(
 			loadedTick,
 		}),
 		requestedNavigation,
+		false,
+		focus,
 	);
+}
+
+export async function openFileAtLine(
+	workspaceId: string,
+	path: string,
+	at: { line: number; column?: number; length?: number },
+	intent: TabIntent,
+): Promise<void> {
+	await openFileInTab(workspaceId, path, intent);
+	useAppStore.getState().revealFileTab(workspaceId, path, at, SOURCE_RENDERER_ID);
 }
 
 export function openDiffInTab(

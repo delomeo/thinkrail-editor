@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { currentTranslator } from "@thinkrail/locales/react";
 import {
 	ancestorPaths,
@@ -13,12 +13,15 @@ import {
 	isAbsolutePath,
 	isRecord,
 	isShellInert,
+	isTextEntryTarget,
 	layoutResourceIdentity,
 	normalizePath,
 	parseTupleKey,
+	pathWithinRoot,
 	platformFamily,
 	platformShortcutLabel,
 	projectRelativePath,
+	READ_ONLY_TEXT_SELECTOR,
 	randomUuid,
 	relativeTime,
 	shallowEqualArrays,
@@ -201,6 +204,19 @@ test("projectRelativePath yields the worktree-relative tab identity from every r
 	expect(projectRelativePath("/wt/ws/src/foo.ts")).toBe("/wt/ws/src/foo.ts");
 });
 
+test("pathWithinRoot answers the root-relative path only for an absolute path the root contains", () => {
+	expect(pathWithinRoot("/wt/ws/src/foo.ts", "/wt/ws")).toBe("src/foo.ts");
+	expect(pathWithinRoot("/wt/ws/src/foo.ts", "/wt/ws/")).toBe("src/foo.ts");
+	expect(pathWithinRoot("/wt/ws", "/wt/ws")).toBe("");
+	expect(pathWithinRoot("/wt/ws/src/../foo.ts", "/wt/ws")).toBe("foo.ts");
+	expect(pathWithinRoot("/wt/ws/../other/foo.ts", "/wt/ws")).toBeNull();
+	expect(pathWithinRoot("/wt/ws-other/foo.ts", "/wt/ws")).toBeNull();
+	expect(pathWithinRoot("src/foo.ts", "/wt/ws")).toBeNull();
+	expect(pathWithinRoot("/wt/ws/src/foo.ts", "wt/ws")).toBeNull();
+	expect(pathWithinRoot("C:\\Repo\\src\\a.ts", "c:\\repo")).toBe("src/a.ts");
+	expect(pathWithinRoot("/src/a.ts", "/")).toBe("src/a.ts");
+});
+
 test("isAbsolutePath accepts posix and Windows roots, in either separator style", () => {
 	expect(isAbsolutePath("/wt/src/foo.ts")).toBe(true);
 	expect(isAbsolutePath("C:/wt/foo.ts")).toBe(true);
@@ -307,4 +323,32 @@ test("randomUuid is a v4 UUID built without crypto.randomUUID", () => {
 	} finally {
 		Object.defineProperty(crypto, "randomUUID", { value: original, configurable: true });
 	}
+});
+
+describe("isTextEntryTarget", () => {
+	const target = (tagName: string, inside: string[] = [], isContentEditable = false) =>
+		Object.assign(new EventTarget(), {
+			tagName,
+			isContentEditable,
+			closest: (selector: string) =>
+				selector.split(", ").some((part) => inside.includes(part)) ? {} : null,
+		});
+
+	test("fields, contenteditable, Monaco and the terminal keep their letters", () => {
+		expect(isTextEntryTarget(target("INPUT"))).toBe(true);
+		expect(isTextEntryTarget(target("DIV", [], true))).toBe(true);
+		expect(isTextEntryTarget(target("DIV", [".monaco-editor"]))).toBe(true);
+		expect(isTextEntryTarget(target("TEXTAREA", [".xterm"]))).toBe(true);
+		expect(isTextEntryTarget(target("BUTTON"))).toBe(false);
+		expect(isTextEntryTarget(null)).toBe(false);
+	});
+
+	test("a read-only editor's focused text is not text entry", () => {
+		expect(isTextEntryTarget(target("TEXTAREA", [".monaco-editor", READ_ONLY_TEXT_SELECTOR]))).toBe(
+			false,
+		);
+		expect(isTextEntryTarget(target("DIV", [".monaco-editor", READ_ONLY_TEXT_SELECTOR]))).toBe(
+			false,
+		);
+	});
 });

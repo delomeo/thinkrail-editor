@@ -1,6 +1,8 @@
 import type {
+	NativeClipboardContent,
 	NativeCommand,
 	NativeNotificationInput,
+	NativeOpenFileRequest,
 	NativeQuitHint,
 	NativeUpdateState,
 	NativeWindowState,
@@ -22,6 +24,7 @@ export type DesktopRpc = {
 			restartToUpdate: { params: undefined; response: undefined };
 			dismissInstallResult: { params: undefined; response: undefined };
 			showNotification: { params: NativeNotificationInput; response: undefined };
+			readClipboard: { params: undefined; response: NativeClipboardContent };
 		};
 		messages: {
 			routeChanged: { hash: string };
@@ -36,6 +39,7 @@ export type DesktopRpc = {
 	webview: {
 		requests: Record<string, never>;
 		messages: {
+			openFile: NativeOpenFileRequest;
 			updateStateChanged: NativeUpdateState;
 			windowChromeChanged: WindowChromeGeometry;
 			windowStateChanged: NativeWindowState;

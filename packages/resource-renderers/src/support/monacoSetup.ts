@@ -1,7 +1,5 @@
 /// <reference path="../bundler.d.ts" />
 import type { Translator } from "@thinkrail/locales/react";
-import type { ThemeRegistration } from "shiki/core";
-import { createOnigurumaEngine } from "shiki/engine/oniguruma";
 import "monaco-editor/features/codicon/register.js";
 import "monaco-editor/features/bracketMatching/register.js";
 import "monaco-editor/features/clipboard/register.js";
@@ -17,14 +15,20 @@ import "monaco-editor/features/wordHighlighter/register.js";
 import "monaco-editor/features/quickCommand/register.js";
 import "monaco-editor/features/gotoLine/register.js";
 import { fontsLoaded, fontsRevision, type ResolvedFont, resolveFont } from "@thinkrail/ui/fonts";
+import {
+	type ReadingCommand,
+	type ReadingDirection,
+	readingScrollTarget,
+} from "@thinkrail/ui/reading";
 import { onThemeSwap } from "@thinkrail/ui/theme";
 import type { Environment, editor } from "monaco-editor/editor/editor.api.js";
 import * as monaco from "monaco-editor/editor/editor.api.js";
 import editorWorker from "monaco-editor/editor/editor.worker?worker";
-import onigWasmUrl from "shiki/onig.wasm?url";
-import type { ResourceCodeHost } from "../host";
+import type { ResourceCodeHost, ResourceCodeLanguage } from "../host";
+import { readingAnchor } from "./codeReading";
+import { editorLanguages } from "./editorLanguages";
 import { editorWrappingOptions } from "./editorWrapping";
-import { createShikiTokens, monacoThemeData } from "./shikiTokens";
+import { createPierreTokens } from "./pierreTokens";
 
 declare global {
 	interface Window {
@@ -39,6 +43,7 @@ window.MonacoEnvironment = {
 };
 
 const EDITOR_THEME = "thinkrail-editor";
+const LANGUAGE_PROBE_SCHEME = "lang-probe";
 
 const BRACKETS: [string, string][] = [
 	["(", ")"],
@@ -46,9 +51,9 @@ const BRACKETS: [string, string][] = [
 	["{", "}"],
 ];
 
-function registerShikiLanguages(code: ResourceCodeHost): void {
+function registerLanguages(languages: readonly ResourceCodeLanguage[]): void {
 	const registered = new Set(monaco.languages.getLanguages().map((language) => language.id));
-	for (const language of code.languages) {
+	for (const language of languages) {
 		if (!registered.has(language.id)) {
 			monaco.languages.register({
 				id: language.id,
@@ -67,10 +72,10 @@ function registerShikiLanguages(code: ResourceCodeHost): void {
 
 const languageByPath = new Map<string, string>();
 
-export function languageForPath(path: string): string {
+function languageForPath(path: string): string {
 	const cached = languageByPath.get(path);
 	if (cached !== undefined) return cached;
-	const uri = monaco.Uri.parse(`lang-probe://probe/${path}`);
+	const uri = monaco.Uri.parse(`${LANGUAGE_PROBE_SCHEME}://probe/${path}`);
 	const existing = monaco.editor.getModel(uri);
 	const model = existing ?? monaco.editor.createModel("", undefined, uri);
 	const id = model.getLanguageId();
@@ -183,19 +188,68 @@ export function revealLineNow(codeEditor: editor.IStandaloneCodeEditor, line: nu
 	codeEditor.revealLineInCenter(line, monaco.editor.ScrollType.Immediate);
 }
 
+const READING_ACTIONS = {
+	edge: ["cursorTop", "cursorBottom"],
+	side: ["cursorLeft", "cursorRight"],
+} as const;
+
+function anchorCaretInView(
+	codeEditor: editor.IStandaloneCodeEditor,
+	direction: ReadingDirection,
+): void {
+	const caret = codeEditor.getPosition();
+	const model = codeEditor.getModel();
+	if (!caret || !model) return;
+	const anchor = readingAnchor(caret, codeEditor.getVisibleRanges(), direction, (line) =>
+		model.getLineMaxColumn(line),
+	);
+	if (!anchor) return;
+	codeEditor.setPosition(anchor);
+	codeEditor.trigger("keyboard", "cursorMove", { to: "wrappedLineStart" });
+}
+
+function pageCode(codeEditor: editor.IStandaloneCodeEditor, direction: ReadingDirection): void {
+	const { width, height } = codeEditor.getLayoutInfo();
+	const { top } = readingScrollTarget(
+		{ kind: "page", direction },
+		{
+			scrollTop: codeEditor.getScrollTop(),
+			scrollLeft: codeEditor.getScrollLeft(),
+			clientHeight: height,
+			clientWidth: width,
+			scrollHeight: codeEditor.getScrollHeight(),
+			scrollWidth: codeEditor.getScrollWidth(),
+		},
+	);
+	codeEditor.setScrollTop(top, monaco.editor.ScrollType.Immediate);
+	anchorCaretInView(codeEditor, 1);
+	codeEditor.setScrollTop(top, monaco.editor.ScrollType.Immediate);
+}
+
+export function readCode(codeEditor: editor.IStandaloneCodeEditor, command: ReadingCommand): void {
+	const forward = command.direction > 0 ? 1 : 0;
+	if (command.kind === "page") {
+		pageCode(codeEditor, command.direction);
+		return;
+	}
+	if (command.kind !== "line") {
+		codeEditor.trigger("keyboard", READING_ACTIONS[command.kind][forward], null);
+		return;
+	}
+	const lineHeight = codeEditor.getOption(monaco.editor.EditorOption.lineHeight);
+	const scrollTop = codeEditor.getScrollTop();
+	anchorCaretInView(codeEditor, command.direction);
+	codeEditor.trigger("keyboard", forward ? "cursorDown" : "cursorUp", null);
+	codeEditor.setScrollTop(
+		scrollTop + command.direction * lineHeight,
+		monaco.editor.ScrollType.Immediate,
+	);
+}
+
 export function disposeFileEditor(codeEditor: editor.IStandaloneCodeEditor): void {
 	const model = codeEditor.getModel();
 	codeEditor.dispose();
 	model?.dispose();
-}
-
-function themeData(registration: ThemeRegistration) {
-	try {
-		const { rules, colors } = monacoThemeData(registration);
-		return { rules, colors };
-	} catch {
-		return { rules: [], colors: {} };
-	}
 }
 
 function currentTheme(code: ResourceCodeHost) {
@@ -210,12 +264,10 @@ function currentTheme(code: ResourceCodeHost) {
 			: light
 				? "vs"
 				: "vs-dark";
-	const registration = code.theme({
-		name: EDITOR_THEME,
-		type: light ? "light" : "dark",
-		readVariable: (name) => styles.getPropertyValue(name).trim(),
-	});
-	return { base, registration, data: themeData(registration) };
+	return {
+		base,
+		data: code.editorTheme((name) => styles.getPropertyValue(name).trim()),
+	};
 }
 
 function defineTheme({ base, data }: ReturnType<typeof currentTheme>): void {
@@ -223,26 +275,12 @@ function defineTheme({ base, data }: ReturnType<typeof currentTheme>): void {
 	monaco.editor.setTheme(EDITOR_THEME);
 }
 
-async function createEngine() {
-	if (typeof WebAssembly !== "object") {
-		const { createJavaScriptRegexEngine } = await import("shiki/engine/javascript");
-		return createJavaScriptRegexEngine();
-	}
-	const response = await fetch(onigWasmUrl);
-	if (!response.ok) throw new Error(`onig.wasm: HTTP ${response.status}`);
-	const onig = await WebAssembly.compile(await response.arrayBuffer());
-	return createOnigurumaEngine((imports) => WebAssembly.instantiate(onig, imports));
-}
+type EditorTokens = ReturnType<typeof createPierreTokens>;
 
-interface MonacoSetup {
-	code: ResourceCodeHost;
-	tokens: ReturnType<typeof createShikiTokens>;
-}
-
-let setup: MonacoSetup | null = null;
+let ready = false;
 const missingProviders = new Set<string>();
 
-function registerTokenProvider(id: string, tokens: MonacoSetup["tokens"]): void {
+function registerTokenProvider(id: string, tokens: EditorTokens): void {
 	monaco.languages.registerTokensProviderFactory(id, {
 		create: async () => {
 			if (await tokens.ready(id)) return tokens.provider(id);
@@ -252,58 +290,28 @@ function registerTokenProvider(id: string, tokens: MonacoSetup["tokens"]): void 
 	});
 }
 
-async function recoverProvider(id: string, tokens: MonacoSetup["tokens"]) {
-	return missingProviders.has(id) && (await tokens.ready(id)) && missingProviders.delete(id);
+async function recoverProvider(id: string, tokens: EditorTokens) {
+	if (!missingProviders.has(id) || !(await tokens.ready(id))) return;
+	missingProviders.delete(id);
+	monaco.languages.setTokensProvider(id, tokens.provider(id));
 }
 
-function loadModelEmbeds(model: editor.ITextModel, tokens: MonacoSetup["tokens"]): void {
-	const id = model.getLanguageId();
-	void Promise.all([
-		recoverProvider(id, tokens),
-		tokens.loadEmbeds(id, () => (model.isDisposed() ? "" : model.getValue())),
-	]).then(([recovered, loaded]) => {
-		if (recovered || loaded) monaco.languages.setTokensProvider(id, tokens.provider(id));
-	});
-}
-
-function watchModelEmbeds(tokens: MonacoSetup["tokens"]): void {
+function watchModels(tokens: EditorTokens): void {
 	monaco.editor.onDidCreateModel((model) => {
-		loadModelEmbeds(model, tokens);
-		const subscriptions = [
-			model.onDidChangeContent(() => loadModelEmbeds(model, tokens)),
-			model.onDidChangeLanguage(() => loadModelEmbeds(model, tokens)),
-		];
-		model.onWillDispose(() => {
-			for (const subscription of subscriptions) subscription.dispose();
-		});
+		if (model.uri.scheme === LANGUAGE_PROBE_SCHEME) return;
+		tokens.track(model);
+		void recoverProvider(model.getLanguageId(), tokens);
 	});
 }
 
 export function ensureMonaco(code: ResourceCodeHost): void {
-	if (setup) return;
-	const tokens = createShikiTokens({
-		languages: code.languages,
-		languageId: (value) => code.languageId(value),
-		engine: createEngine,
-	});
-	registerShikiLanguages(code);
-	for (const { id } of code.languages) registerTokenProvider(id, tokens);
-	watchModelEmbeds(tokens);
-	const theme = currentTheme(code);
-	void tokens.applyTheme(theme.registration, theme.data.rules);
-	defineTheme(theme);
-	setup = { code, tokens };
-	onThemeSwap(() => {
-		void refreshTheme(code, tokens).catch(() => monaco.editor.setTheme(EDITOR_THEME));
-	});
-}
-
-export function warmLanguage(id: string): void {
-	setup?.tokens.warm(id);
-}
-
-async function refreshTheme(code: ResourceCodeHost, tokens: MonacoSetup["tokens"]): Promise<void> {
-	const theme = currentTheme(code);
-	await tokens.applyTheme(theme.registration, theme.data.rules);
-	defineTheme(theme);
+	if (ready) return;
+	const tokens = createPierreTokens();
+	const languages = editorLanguages(code.languages);
+	registerLanguages(languages);
+	for (const { id } of languages) registerTokenProvider(id, tokens);
+	watchModels(tokens);
+	defineTheme(currentTheme(code));
+	ready = true;
+	onThemeSwap(() => defineTheme(currentTheme(code)));
 }

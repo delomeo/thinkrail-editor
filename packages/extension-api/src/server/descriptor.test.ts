@@ -52,6 +52,14 @@ describe("defineServerExtension", () => {
 		const session: ExtensionSessionServices = {
 			expectToolResponse: () => {},
 			awaitToolResponse: async () => ({ kind: "deferred" }),
+			setting: () => false,
+			workspaceFiles: {
+				check: async () => {},
+				checkArtifacts: async (paths) => paths.map((path) => ({ path })),
+				ensureArtifactsDir: async () => {},
+				scratchDir: "",
+				artifactsDir: "",
+			},
 		};
 		expect(extension.sessionExtensions?.(session)).toEqual([sessionFactory]);
 		expect(sessionFactory).not.toHaveBeenCalled();

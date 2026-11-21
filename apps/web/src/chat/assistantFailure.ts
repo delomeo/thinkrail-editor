@@ -31,6 +31,50 @@ export function isModelUnavailableError(message: string): boolean {
 	return MODEL_UNAVAILABLE.some((pattern) => pattern.test(message));
 }
 
+const FALLBACKS_REJECTED = [
+	/does not support (?:the )?fallbacks? field/i,
+	/\bfallbacks\b["'`]?:?\s*(?:Extra inputs are not permitted|is not permitted|is not allowed|is not supported)/i,
+	/\b(?:unknown|unrecognized|unsupported|unexpected) (?:request |keyword )?(?:field|parameter|property|key|name|argument)s?\b[^\n]{0,20}?\bfallbacks\b/i,
+];
+
+export function fallbacksRejected(turn: {
+	text: string;
+	failure?: AssistantFailure | undefined;
+}): boolean {
+	return turn.failure === "error" && FALLBACKS_REJECTED.some((pattern) => pattern.test(turn.text));
+}
+
+export const CLAUDE_USAGE_URL = "https://claude.ai/settings/usage";
+const CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage";
+
+export interface SubscriptionLimit {
+	url: string;
+	label: "chat.extraUsage.manage" | "chat.failure.checkChatgptUsage";
+}
+
+const SUBSCRIPTION_LIMITS: (SubscriptionLimit & { pattern: RegExp })[] = [
+	{
+		pattern: /Third-party apps now draw from your extra usage/,
+		url: CLAUDE_USAGE_URL,
+		label: "chat.extraUsage.manage",
+	},
+	{
+		pattern:
+			/subscription_sharing_(?:workplace_individual_)?usage_limit_exceeded|Subscription Sharing usage limit|You have hit your ChatGPT usage limit/,
+		url: CHATGPT_USAGE_URL,
+		label: "chat.failure.checkChatgptUsage",
+	},
+];
+
+export function subscriptionLimit(turn: {
+	text: string;
+	failure?: AssistantFailure | undefined;
+}): SubscriptionLimit | null {
+	if (turn.failure !== "error") return null;
+	const match = SUBSCRIPTION_LIMITS.find(({ pattern }) => pattern.test(turn.text));
+	return match ? { url: match.url, label: match.label } : null;
+}
+
 export function errorTurnText(
 	t: Translator,
 	turn: { text: string; failure?: AssistantFailure | undefined },
@@ -38,6 +82,7 @@ export function errorTurnText(
 	if (turn.failure === "truncated") return t("chat.failure.truncated");
 	if (turn.failure === "error" && isModelUnavailableError(turn.text))
 		return `${t("chat.failure.modelUnavailable")}\n\n${turn.text}`;
+	if (fallbacksRejected(turn)) return `${t("chat.failure.fallbacksRejected")}\n\n${turn.text}`;
 	if (turn.failure === "error") return turn.text || t("chat.failure.error");
 	return turn.text;
 }

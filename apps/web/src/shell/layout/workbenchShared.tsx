@@ -1,5 +1,6 @@
 import { type CollisionDetection, pointerWithin, useDroppable } from "@dnd-kit/core";
 import type { Translator } from "@thinkrail/locales/react";
+import { defaultFocusTarget } from "@thinkrail/ui/focus";
 import {
 	type ImperativePanelGroupHandle,
 	ResizableHandle,
@@ -16,6 +17,7 @@ import {
 	useState,
 } from "react";
 import { type LayoutAttention, readLayoutNavigationClock, tupleKey } from "../../lib";
+import type { AuxiliaryRailControlProps } from "./AuxiliaryRail";
 import type { AuxiliaryRailEntry } from "./auxiliaryPresentation";
 import {
 	type CenterSplitDirection,
@@ -31,6 +33,7 @@ import {
 	type LayoutSide,
 	layoutTabName,
 } from "./model";
+import type { WorkbenchTabCommands } from "./tabActions";
 import type {
 	LayoutAuxiliaryRegion,
 	LayoutCenterTab,
@@ -46,7 +49,10 @@ export interface LayoutTabFocusRequest {
 	location: LayoutGroupLocation;
 	tabId?: string;
 	onlyIfFocusLost?: true;
+	content?: true;
 }
+
+export type RegisterChatRename = (tabId: string, begin: (name: string) => void) => () => void;
 
 export interface PreparedLayoutClose {
 	document: WorkspaceLayoutDocument;
@@ -55,13 +61,14 @@ export interface PreparedLayoutClose {
 
 export interface WorkbenchProps {
 	workspaceId: string;
+	worktreePath: string;
 	document: WorkspaceLayoutDocument;
 	attention: LayoutAttention;
 	maxSideGroups: number;
 	maxBottomGroups: number;
 	projectionEpoch: number;
 	focusRequest?: LayoutTabFocusRequest;
-	subscribeCloseRequest?: (listener: () => void) => () => void;
+	registerTabCommands?: (commands: WorkbenchTabCommands) => () => void;
 	renderTabBody: (tab: LayoutCenterTab | Extract<LayoutSideTab, { kind: "terminal" }>) => ReactNode;
 	renderTabAdornment: (tab: LayoutTab) => ReactNode;
 	renderToolBody: (tool: LayoutToolId) => ReactNode;
@@ -84,6 +91,14 @@ export interface WorkbenchProps {
 		options?: { newPaneBelow?: boolean },
 	) => void;
 	onGestureCanceled?: () => void;
+	chromeShortcuts?: WorkbenchChromeShortcuts;
+	renderLeftRailFooter?: (control: AuxiliaryRailControlProps) => ReactNode;
+}
+
+export interface WorkbenchChromeShortcuts {
+	readonly hide: Readonly<Partial<Record<LayoutAuxiliaryRegion, readonly string[]>>>;
+	readonly tools: Readonly<Partial<Record<LayoutToolId, readonly string[]>>>;
+	readonly terminal: readonly string[];
 }
 
 export type DropTarget =
@@ -419,16 +434,55 @@ function isFocusLost(active: Element | null): boolean {
 	);
 }
 
-export function focusLayoutRequest(request: LayoutTabFocusRequest): void {
-	if (request.onlyIfFocusLost && !isFocusLost(globalThis.document.activeElement)) return;
+function focusRestsInSelectedPanel(tab: HTMLElement | null, active: Element | null): boolean {
+	if (!tab || isFocusLost(active)) return false;
+	if (tab.getAttribute("aria-selected") !== "true" && tab.getAttribute("aria-pressed") !== "true") {
+		return false;
+	}
+	const panelId = tab.getAttribute("aria-controls");
+	const panel = panelId ? globalThis.document.getElementById(panelId) : null;
+	return panel?.contains(active) ?? false;
+}
+
+const CONTENT_FOCUS_FRAMES = 120;
+
+function focusTabContent(tab: HTMLElement, fallback: () => void): () => void {
+	const origin = globalThis.document.activeElement;
+	let frames = CONTENT_FOCUS_FRAMES;
+	let frame = 0;
+	const attempt = () => {
+		frame = 0;
+		const active = globalThis.document.activeElement;
+		if (!tab.isConnected || tab.getAttribute("aria-selected") !== "true") return;
+		if (active !== origin && !isFocusLost(active)) return;
+		const panelId = tab.getAttribute("aria-controls");
+		const panel = panelId ? globalThis.document.getElementById(panelId) : null;
+		const target = panel ? defaultFocusTarget(panel) : null;
+		if (target) target.focus();
+		else if (frames-- > 0) frame = requestAnimationFrame(attempt);
+		else fallback();
+	};
+	attempt();
+	return () => cancelAnimationFrame(frame);
+}
+
+export function focusLayoutRequest(request: LayoutTabFocusRequest): () => void {
+	const active = globalThis.document.activeElement;
+	const done = () => undefined;
+	if (request.onlyIfFocusLost && !isFocusLost(active)) return done;
 	const tab = request.tabId
 		? globalThis.document.getElementById(tabDomId(request.location, request.tabId))
 		: null;
+	if (focusRestsInSelectedPanel(tab, active)) return done;
 	const pane = globalThis.document.getElementById(groupDomId(request.location));
 	const rail = globalThis.document
 		.getElementById(railGroupDomId(request.location))
 		?.querySelector<HTMLButtonElement>("button");
-	[tab, pane, rail].find((element) => element && element.getClientRects().length > 0)?.focus();
+	const focusTab = () =>
+		[tab, pane, rail].find((element) => element && element.getClientRects().length > 0)?.focus();
+	if (request.content && tab) return focusTabContent(tab, focusTab);
+	focusTab();
+	return done;
 }
 
 export function useLayoutFocus(
@@ -441,10 +495,14 @@ export function useLayoutFocus(
 		if (!request || consumed.current === request.key) return;
 		consumed.current = request.key;
 		if (request.workspaceId !== workspaceId) return;
+		let cancelFocus: () => void = () => undefined;
 		const frame = requestAnimationFrame(() => {
-			if (workspaceRef.current === request.workspaceId) focusLayoutRequest(request);
+			if (workspaceRef.current === request.workspaceId) cancelFocus = focusLayoutRequest(request);
 		});
-		return () => cancelAnimationFrame(frame);
+		return () => {
+			cancelAnimationFrame(frame);
+			cancelFocus();
+		};
 	}, [request, workspaceId, workspaceRef]);
 }
 
@@ -584,6 +642,7 @@ export function findLayoutGroupTabs(
 
 export interface SharedGroupProps {
 	workspaceId: string;
+	worktreePath: string;
 	document: WorkspaceLayoutDocument;
 	readAttention: () => LayoutAttention;
 	selectionEpochRef: React.MutableRefObject<number>;
@@ -608,8 +667,10 @@ export interface SharedGroupProps {
 	onHideSide: (region: LayoutAuxiliaryRegion) => void;
 	onRevealTool: (tool: LayoutToolId) => void;
 	onRenameChat: WorkbenchProps["onRenameChat"];
+	registerChatRename: RegisterChatRename;
 	chatFirstPrompts: WorkbenchProps["chatFirstPrompts"];
 	canFocusAdjacentGroup: boolean;
+	chromeShortcuts: WorkbenchChromeShortcuts | undefined;
 }
 
 export const GroupTabBody = memo(function GroupTabBody({
